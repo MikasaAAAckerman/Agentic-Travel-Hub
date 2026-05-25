@@ -1,4 +1,4 @@
-# Agentic-Travel-Hub 🐱
+# Agentic-Travel-Hub 
 
 > **从零设计，亲手将 `while-if-else` 迭代至两层 Graph 嵌套的架构演进项目，用于 Java AI Agent 旅行规划引擎。**
 
