@@ -1,0 +1,30 @@
+#####################
+#                   #
+# 这是一个yml文件的模版 #
+#                   #
+#####################
+
+spring:
+  profiles:
+    active: dev
+  application:
+    name: agentic-travel-hub
+  ai:
+    dashscope:
+      api-key: xxxxx
+      chat:
+        options:
+          model: qwen-plus
+    openai:
+      api-key: xxxxx
+      chat:
+        options:
+          model: deepseek-v4-pro
+
+# 当前服务配置
+server:
+  port: 8080
+
+logging:
+  level:
+    org.springframework.ai: DEBUG

@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>红豆 · 旅行计划 | 侘寂</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@300;400;600;700&family=Zen+Kaku+Gothic+New:wght@300;400;500&family=Shippori+Mincho:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --washi: #f7f3ed;
+            --ink: #2c2416;
+            --ink-light: #6b5e4a;
+            --ink-fade: #a89880;
+            --vermilion: #b5343a;
+            --vermilion-fade: #d4a0a0;
+            --indigo: #2c4270;
+            --gold: #8b7340;
+            --paper: #faf7f2;
+            --shadow: 0 2px 16px rgba(44,36,22,0.06);
+            --line: #d4ccc0;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Zen Kaku Gothic New', 'Noto Serif SC', serif;
+            background: var(--washi);
+            color: var(--ink);
+            min-height: 100vh;
+            display: flex; align-items: center; justify-content: center;
+            background-image:
+                linear-gradient(0deg, transparent 24px, #e8e0d4 25px),
+                linear-gradient(90deg, transparent 24px, #e8e0d4 25px);
+            background-size: 25px 25px;
+            background-position: 0 0;
+            padding: 24px;
+        }
+
+        .container {
+            width: 100%; max-width: 960px; height: 94vh;
+            background: var(--paper);
+            border: 1px solid var(--line);
+            box-shadow: var(--shadow), 0 0 0 8px #f0ece4, 0 0 0 9px var(--line);
+            display: flex; flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* ── Header ── */
+        .header {
+            padding: 24px 32px 0;
+            display: flex; align-items: flex-end; justify-content: space-between;
+            border-bottom: 1px solid var(--line);
+            padding-bottom: 20px;
+        }
+        .header-left { display: flex; align-items: flex-end; gap: 20px; }
+        .hanko {
+            width: 48px; height: 48px;
+            border: 1.5px solid var(--vermilion);
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-family: 'Shippori Mincho', serif;
+            font-size: 24px; color: var(--vermilion);
+            background: #fdf8f5;
+            flex-shrink: 0;
+        }
+        .header-title {
+            font-family: 'Shippori Mincho', serif;
+            font-size: 28px; font-weight: 600; color: var(--ink);
+            letter-spacing: 4px; line-height: 1;
+        }
+        .header-title span { color: var(--vermilion); font-size: 18px; }
+        .header-subtitle {
+            font-size: 11px; color: var(--ink-fade);
+            letter-spacing: 5px; text-transform: uppercase; margin-top: 4px;
+        }
+        .header-status {
+            text-align: right;
+            font-size: 10px; color: var(--ink-fade);
+            letter-spacing: 2px; line-height: 1.8;
+        }
+        .header-status .status-val { color: var(--indigo); }
+
+        /* ── 版本选择 ── */
+        .version-bar { padding: 16px 32px; border-bottom: 1px solid var(--line); }
+        .version-label {
+            font-size: 9px; color: var(--ink-fade);
+            letter-spacing: 4px; text-transform: uppercase; margin-bottom: 12px;
+        }
+        .version-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+        .version-card {
+            background: #fdfaf6; border: 1px solid var(--line);
+            padding: 14px 12px; display: flex; align-items: center; gap: 10px;
+            cursor: pointer; transition: all 0.3s;
+            position: relative;
+        }
+        .version-card::after {
+            content: ''; position: absolute; left: 0; top: 0; bottom: 0;
+            width: 2px; transition: all 0.3s;
+        }
+        .version-card:hover { background: #faf5ee; transform: translateY(-1px); }
+        .version-card.active { background: #fdf5f0; border-color: var(--vermilion); }
+        .version-card.active::after { background: var(--vermilion); }
+        .vc-icon {
+            width: 34px; height: 34px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 16px; flex-shrink: 0;
+            background: #f5efe8; border: 1px solid #e8ddd0;
+        }
+        .vc-name { font-size: 12px; font-weight: 600; color: var(--ink); }
+        .vc-desc { font-size: 10px; color: var(--ink-fade); }
+
+        /* ── 聊天区 ── */
+        .chat-container {
+            flex: 1; overflow-y: auto; padding: 24px 32px;
+            display: flex; flex-direction: column; gap: 20px;
+        }
+        .chat-container::-webkit-scrollbar { width: 3px; }
+        .chat-container::-webkit-scrollbar-thumb { background: #d4c8b4; border-radius: 2px; }
+
+        .system-log {
+            background: #f5f0e8; border-left: 2px solid var(--ink-fade);
+            color: var(--ink-light); font-size: 11px;
+            padding: 10px 16px; letter-spacing: 1px;
+            border-radius: 0 2px 2px 0;
+        }
+
+        .msg-user-wrapper { display: flex; justify-content: flex-end; }
+        .msg-user {
+            max-width: 75%;
+            background: #f8f2ea; border: 1px solid #e8ddd0;
+            padding: 14px 20px; color: var(--ink);
+            font-size: 14px; line-height: 1.8;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+        }
+        .msg-user .msg-label {
+            font-size: 9px; color: var(--ink-fade);
+            margin-bottom: 6px; letter-spacing: 3px;
+        }
+
+        .msg-agent-wrapper { display: flex; justify-content: flex-start; }
+        .msg-agent {
+            max-width: 80%;
+            background: #fffdf9; border: 1px solid var(--line);
+            padding: 16px 24px; color: var(--ink);
+            font-size: 14px; line-height: 2;
+            box-shadow: var(--shadow);
+            border-radius: 0 8px 8px 8px;
+        }
+        .msg-agent .msg-label {
+            font-size: 9px; color: var(--indigo); opacity: 0.7;
+            margin-bottom: 6px; letter-spacing: 3px;
+        }
+
+        /* ── 输入区 ── */
+        .input-area { padding: 20px 32px; border-top: 1px solid var(--line); background: #fdfaf6; }
+        .input-wrap {
+            display: flex; align-items: center; gap: 12px;
+            border: 1px solid var(--line); padding: 6px 6px 6px 20px;
+            background: #fffdf9; transition: all 0.3s;
+        }
+        .input-wrap:focus-within { border-color: var(--ink-fade); box-shadow: inset 0 0 0 1px var(--line); }
+        .endpoint-badge {
+            font-size: 12px; color: var(--vermilion); flex-shrink: 0;
+            opacity: 0.7; letter-spacing: 2px;
+        }
+        .chat-input {
+            flex: 1; background: transparent; border: none; outline: none;
+            color: var(--ink); font-size: 14px;
+            font-family: 'Zen Kaku Gothic New', 'Noto Serif SC', serif;
+        }
+        .chat-input::placeholder { color: #c8bca8; }
+        .send-btn {
+            background: var(--ink); border: none; color: #f7f3ed;
+            font-family: 'Shippori Mincho', serif; font-size: 12px;
+            letter-spacing: 4px; padding: 12px 28px; cursor: pointer;
+            transition: all 0.3s; flex-shrink: 0;
+        }
+        .send-btn:hover { background: var(--vermilion); }
+        .footer-text {
+            font-size: 9px; color: var(--ink-fade);
+            text-align: center; margin-top: 8px; letter-spacing: 2px;
+        }
+
+        /* ── 记忆面板 ── */
+        .memory-panel {
+            position: fixed; top: 0; right: -420px; width: 400px; height: 100vh;
+            background: #fdfaf6; border-left: 1px solid var(--line);
+            z-index: 100; transition: right 0.3s ease;
+            display: flex; flex-direction: column;
+            box-shadow: -4px 0 30px rgba(0,0,0,0.06);
+        }
+        .memory-panel.open { right: 0; }
+        .memory-panel-header {
+            padding: 20px 24px; border-bottom: 1px solid var(--line);
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .memory-panel-title {
+            font-family: 'Shippori Mincho', serif; font-size: 13px;
+            color: var(--ink-light); letter-spacing: 3px;
+        }
+        .memory-close {
+            background: none; border: none; color: var(--ink-fade);
+            font-size: 18px; cursor: pointer;
+        }
+        .memory-close:hover { color: var(--vermilion); }
+        .memory-panel-body {
+            flex: 1; overflow-y: auto; padding: 20px 24px;
+            font-size: 11px; color: var(--ink-light); line-height: 2;
+            white-space: pre-wrap; word-break: break-all;
+            font-family: 'Zen Kaku Gothic New', serif;
+        }
+        .memory-refresh-btn, .memory-auto-btn {
+            flex: 1; background: none; border: 1px solid var(--line);
+            color: var(--ink-light); font-size: 10px; letter-spacing: 2px;
+            padding: 10px; cursor: pointer; font-family: inherit;
+            transition: all 0.2s;
+        }
+        .memory-refresh-btn:hover, .memory-auto-btn:hover { background: #f5efe8; }
+        .memory-auto-btn.auto-on { background: var(--vermilion); color: #fff; border-color: var(--vermilion); }
+        .memory-panel-footer { padding: 14px 20px; border-top: 1px solid var(--line); display: flex; gap: 8px; }
+        .memory-toggle {
+            background: none; border: 1px solid var(--ink-fade);
+            color: var(--ink-light); font-size: 9px;
+            letter-spacing: 3px; padding: 6px 14px; cursor: pointer;
+            font-family: inherit; transition: all 0.2s;
+        }
+        .memory-toggle:hover, .memory-toggle.active { background: var(--ink); color: #f7f3ed; }
+
+        .fade-in { animation: fadeSlide 0.4s ease-out; }
+        @keyframes fadeSlide {
+            from { opacity: 0; transform: translateY(12px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @media (max-width: 768px) {
+            .container { max-width: 100%; height: 100vh; border: none; box-shadow: none; }
+            .version-grid { grid-template-columns: repeat(2, 1fr); }
+            .header-title { font-size: 22px; }
+            .msg-agent, .msg-user { max-width: 92%; }
+            .memory-panel { width: 100%; right: -100%; }
+            .chat-container { padding: 16px; }
+            .header, .version-bar, .input-area { padding-left: 16px; padding-right: 16px; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <!-- Header -->
+    <div class="header">
+        <div class="header-left">
+            <div class="hanko" id="header-emoji">🐱</div>
+            <div>
+                <div class="header-title"><span>旅</span>の<span>計画</span></div>
+                <div class="header-subtitle" id="header-subtitle">GRAPH NESTED · v3</div>
+            </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:20px;">
+            <div class="header-status">
+                <span class="status-val" id="status-engine">OrchestratorGraphAgent</span><br>
+                <span class="status-val" id="status-endpoint">/chat/stream/v3</span>
+            </div>
+            <button class="memory-toggle" id="memory-toggle" onclick="toggleMemory()">记忆</button>
+        </div>
+    </div>
+
+    <!-- 版本选择 -->
+    <div class="version-bar">
+        <div class="version-label">— 版 本 选 择 —</div>
+        <div class="version-grid">
+            <div class="version-card" data-version="v0" style="color:#4a6741;">
+                <div class="vc-icon">🔄</div>
+                <div class="vc-label"><div class="vc-name">v0 · ReAct</div><div class="vc-desc">while-if-else</div></div>
+            </div>
+            <div class="version-card" data-version="v1" style="color:#2c4270;">
+                <div class="vc-icon">🔀</div>
+                <div class="vc-label"><div class="vc-name">v1 · Graph</div><div class="vc-desc">手写状态机</div></div>
+            </div>
+            <div class="version-card" data-version="v2" style="color:#8b3a3a;">
+                <div class="vc-icon">👥</div>
+                <div class="vc-label"><div class="vc-name">v2 · 多Agent</div><div class="vc-desc">编排者 + 领域专家</div></div>
+            </div>
+            <div class="version-card active" data-version="v3" style="color:#b5343a;">
+                <div class="vc-icon">🧬</div>
+                <div class="vc-label"><div class="vc-name">v3 · 重Graph</div><div class="vc-desc">二層Graph嵌套</div></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 聊天区 -->
+    <div class="chat-container" id="chat-container">
+        <div class="msg-agent-wrapper fade-in">
+            <div class="msg-agent">
+                <div class="msg-label">红 豆</div>
+                <div class="text-content text-sm leading-relaxed">
+                    欢迎回来，笨蛋主人。<br><br>
+                    四个版本卡片对应四种架构设计：<br>
+                    🔄 <b>v0</b> — while-if-else ReAct<br>
+                    🔀 <b>v1</b> — 手写状态机 Graph<br>
+                    👥 <b>v2</b> — 多 Agent 编排<br>
+                    🧬 <b>v3</b> — 两层 Graph 嵌套<br><br>
+                    点卡片切换版本，下方输入需求喵。
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 输入区 -->
+    <div class="input-area">
+        <div class="input-wrap">
+            <div class="endpoint-badge" id="endpoint-badge">/v3</div>
+            <input type="text" class="chat-input" id="user-input" placeholder="目的地、日付、気になることをどうぞ…">
+            <button class="send-btn" id="send-btn">发 送</button>
+        </div>
+        <div class="footer-text">
+            <span id="footer-engine">v3 · OrchestratorGraphAgent</span>
+            &nbsp;|&nbsp; Spring AI Alibaba Graph &nbsp;|&nbsp; DashScope RAG
+        </div>
+    </div>
+</div>
+
+<!-- 记忆侧边面板 -->
+<div class="memory-panel" id="memory-panel">
+    <div class="memory-panel-header">
+        <span class="memory-panel-title">短 期 记 忆</span>
+        <button class="memory-close" onclick="toggleMemory()">✕</button>
+    </div>
+    <div class="memory-panel-body" id="memory-panel-body">点击「记忆」按钮加载</div>
+    <div class="memory-panel-footer">
+        <button class="memory-refresh-btn" onclick="fetchMemory()">刷 新</button>
+        <button class="memory-auto-btn" id="memory-auto-btn" onclick="toggleAutoRefresh()">自动 OFF</button>
+    </div>
+</div>
+
+<script>
+    const VERSIONS = {
+        v0: { endpoint: '/api/aiagent/chat/stream/v0', icon: '🔄', emoji: '🐱', title: 'ReAct 引擎', subtitle: 'v0 · while-if-else', engine: 'DualCoreReactEngine', footer: 'v0 · DeepSeek Planner + Qwen Worker + RAG', color: '#4a6741' },
+        v1: { endpoint: '/api/aiagent/chat/stream/v1', icon: '🔀', emoji: '🧩', title: 'Graph 引擎', subtitle: 'v1 · 手写状态机', engine: 'GraphReactEngine', footer: 'v1 · State + Node + Edge 三件套', color: '#2c4270' },
+        v2: { endpoint: '/api/aiagent/chat/stream/v2', icon: '👥', emoji: '🐱', title: '多Agent 编排', subtitle: 'v2 · Multi-Agent', engine: 'OrchestratorAgent', footer: 'v2 · 编排者 + 5领域专家', color: '#8b3a3a' },
+        v3: { endpoint: '/api/aiagent/chat/stream/v3', icon: '🧬', emoji: '🐱', title: '旅行计划', subtitle: 'v3 · 两层Graph嵌套', engine: 'OrchestratorGraphAgent', footer: 'v3 · Spring AI Alibaba Graph Core', color: '#b5343a' }
+    };
+    let currentVersion = 'v3';
+    const chatContainer = document.getElementById('chat-container');
+    const userInput = document.getElementById('user-input');
+    const sendBtn = document.getElementById('send-btn');
+    const endpointBadge = document.getElementById('endpoint-badge');
+
+    document.querySelectorAll('.version-card').forEach(card => {
+        card.addEventListener('click', () => {
+            document.querySelectorAll('.version-card').forEach(c => c.classList.remove('active'));
+            card.classList.add('active');
+            currentVersion = card.dataset.version;
+            const v = VERSIONS[currentVersion];
+            document.getElementById('header-emoji').textContent = v.emoji;
+            document.getElementById('header-title').innerHTML = v.title;
+            document.getElementById('header-subtitle').textContent = v.subtitle;
+            document.getElementById('status-engine').textContent = v.engine;
+            document.getElementById('status-endpoint').textContent = v.endpoint;
+            document.getElementById('endpoint-badge').textContent = '/v' + currentVersion.slice(1);
+            document.getElementById('footer-engine').innerHTML = '<b>' + currentVersion + '</b> · ' + v.engine;
+            document.getElementById('send-btn').style.background = v.color;
+            appendSystemLog('切换: ' + currentVersion + ' — ' + v.subtitle);
+        });
+    });
+
+    (function initUI() {
+        const v = VERSIONS[currentVersion];
+        document.getElementById('header-emoji').textContent = v.emoji;
+        document.getElementById('header-subtitle').textContent = v.subtitle;
+        document.getElementById('status-engine').textContent = v.engine;
+        document.getElementById('status-endpoint').textContent = v.endpoint;
+        document.getElementById('endpoint-badge').textContent = '/v' + currentVersion.slice(1);
+        document.getElementById('footer-engine').innerHTML = '<b>' + currentVersion + '</b> · ' + v.engine;
+    })();
+
+    async function handleSend() {
+        const prompt = userInput.value.trim();
+        if (!prompt) return;
+        appendMessage('user', prompt);
+        userInput.value = '';
+        const responseId = 'resp-' + Date.now();
+        const responseWrapper = appendMessage('agent', '', responseId);
+        const v = VERSIONS[currentVersion];
+        const sseUrl = `http://localhost:8080${v.endpoint}?prompt=${encodeURIComponent(prompt)}&sessionId=hongdou_master&chatId=session_001`;
+        appendSystemLog('连接中: ' + v.engine + '...');
+        const eventSource = new EventSource(sseUrl);
+        eventSource.onmessage = (event) => {
+            const data = event.data;
+            const formattedData = data.replace(/\\n/g, '<br>');
+            if (data.includes('🧠') || data.includes('🛠️') || data.includes('✅') || data.includes('📋') || data.includes('🎉') || data.includes('🤔') || data.includes('⏰') || data.includes('📡') || data.includes('✨') || data.includes('🔄')) {
+                responseWrapper.querySelector('.text-content').innerHTML += `<div class="system-log">${formattedData}</div>`;
+            } else {
+                responseWrapper.querySelector('.text-content').innerHTML += formattedData;
+            }
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        };
+        eventSource.onerror = () => { eventSource.close(); };
+    }
+
+    function appendMessage(role, text, id = '') {
+        const wrapper = document.createElement('div');
+        wrapper.className = (role === 'user' ? 'msg-user-wrapper' : 'msg-agent-wrapper') + ' fade-in';
+        const innerClass = role === 'user' ? 'msg-user' : 'msg-agent';
+        const label = role === 'user' ? '主 人' : ('红 豆 · ' + currentVersion);
+        wrapper.innerHTML = `<div class="${innerClass}"><div class="msg-label">${label}</div><div class="text-content text-sm leading-relaxed" id="${id}">${text}</div></div>`;
+        chatContainer.appendChild(wrapper);
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+        return wrapper;
+    }
+
+    function appendSystemLog(text) {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'fade-in';
+        wrapper.innerHTML = `<div class="system-log">${text}</div>`;
+        chatContainer.appendChild(wrapper);
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+
+    sendBtn.addEventListener('click', handleSend);
+    userInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') handleSend(); });
+
+    // 记忆面板
+    let memoryAutoRefresh = null;
+    function toggleMemory() {
+        const panel = document.getElementById('memory-panel');
+        const btn = document.getElementById('memory-toggle');
+        panel.classList.toggle('open');
+        btn.classList.toggle('active');
+        if (panel.classList.contains('open')) fetchMemory();
+    }
+    async function fetchMemory() {
+        const body = document.getElementById('memory-panel-body');
+        body.textContent = '加载中…';
+        try {
+            const res = await fetch('http://localhost:8080/api/aiagent/memory/view?sessionId=hongdou_master&chatId=session_001');
+            body.textContent = await res.text() || '暂无记录';
+        } catch(e) { body.textContent = '获取失败: ' + e.message; }
+    }
+    function toggleAutoRefresh() {
+        const btn = document.getElementById('memory-auto-btn');
+        if (memoryAutoRefresh) { clearInterval(memoryAutoRefresh); memoryAutoRefresh = null; btn.classList.remove('auto-on'); btn.textContent = '自动 OFF'; }
+        else { memoryAutoRefresh = setInterval(fetchMemory, 5000); btn.classList.add('auto-on'); btn.textContent = '自动 ON'; }
+    }
+</script>
+</body>
+</html>
