@@ -45,8 +45,6 @@ public class OrchestratorGraphEdge {
                 return "overMaxLoopTimes";
             }
 
-            state.data().put(GraphStateKey.LOOP_TIMES.getKey(), currentLoopTimes+1);
-
             // 获得GraphState的Action
             String actionStr = state.value(GraphStateKey.ACTION.getKey(), "");
 

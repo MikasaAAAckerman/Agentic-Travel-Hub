@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Sinks;
 import reactor.core.scheduler.Schedulers;
 
 /**
@@ -172,13 +173,24 @@ public class TravelAgentController {
         log.info("[V3] Graph多Agent 流式引擎启动");
         shortTermMemory.addUserTalking(sessionId, chatId, prompt);
 
-        return Flux.just("✨ [V3 · Graph Multi-Agent] 两层Graph嵌套，红豆调度专家团队中喵！\n\n")
-                .concatWith(v3Engine.executeStream(prompt, sessionId, chatId))
-                .onErrorResume(e -> {
+        Sinks.Many<String> sink = Sinks.many().unicast().onBackpressureBuffer();
+
+        // 先推欢迎语
+        sink.tryEmitNext("✨ [V3 · Graph Multi-Agent] 两层Graph嵌套，红豆调度专家团队中喵！\n\n");
+
+        // 图执行放独立线程，每到一个节点就 tryEmitNext 实时推给前端
+        v3Engine.executeStream(prompt, sessionId, chatId)
+                .doOnNext(sink::tryEmitNext)
+                .doOnComplete(sink::tryEmitComplete)
+                .doOnError(e -> {
                     log.error("[V3] 接口异常", e);
-                    return Flux.just("系统爆炸了！" + e.getMessage());
+                    sink.tryEmitNext("系统爆炸了！" + e.getMessage());
+                    sink.tryEmitComplete();
                 })
-                .subscribeOn(Schedulers.boundedElastic());
+                .subscribeOn(Schedulers.boundedElastic())
+                .subscribe();
+
+        return sink.asFlux();
     }
 
     // ═══════════════════════════════════════

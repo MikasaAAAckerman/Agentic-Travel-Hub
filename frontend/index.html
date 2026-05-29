@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>红豆 · 旅行计划 | 侘寂</title>
+    <title>红豆 · 旅 行 计 划</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@300;400;600;700&family=Zen+Kaku+Gothic+New:wght@300;400;500&family=Shippori+Mincho:wght@400;600;700&display=swap" rel="stylesheet">
@@ -253,7 +253,7 @@
         <div class="header-left">
             <div class="hanko" id="header-emoji">🐱</div>
             <div>
-                <div class="header-title"><span>旅</span>の<span>計画</span></div>
+                <div class="header-title">旅行计划</div>
                 <div class="header-subtitle" id="header-subtitle">GRAPH NESTED · v3</div>
             </div>
         </div>
@@ -284,7 +284,7 @@
             </div>
             <div class="version-card active" data-version="v3" style="color:#b5343a;">
                 <div class="vc-icon">🧬</div>
-                <div class="vc-label"><div class="vc-name">v3 · 重Graph</div><div class="vc-desc">二層Graph嵌套</div></div>
+                <div class="vc-label"><div class="vc-name">v3 · 重Graph</div><div class="vc-desc">二层Graph嵌套</div></div>
             </div>
         </div>
     </div>
@@ -311,7 +311,7 @@
     <div class="input-area">
         <div class="input-wrap">
             <div class="endpoint-badge" id="endpoint-badge">/v3</div>
-            <input type="text" class="chat-input" id="user-input" placeholder="目的地、日付、気になることをどうぞ…">
+            <input type="text" class="chat-input" id="user-input" placeholder="请输入目的地、日期、想要了解的内容…">
             <button class="send-btn" id="send-btn">发 送</button>
         </div>
         <div class="footer-text">
@@ -375,6 +375,47 @@
         document.getElementById('footer-engine').innerHTML = '<b>' + currentVersion + '</b> · ' + v.engine;
     })();
 
+    /* ── 打字机引擎 ── */
+    let typewriterBuffer = [];
+    let typewriterTarget = null;
+    let typewriterRunning = false;
+    const TYPEWRITER_INTERVAL = 25; // ms/字
+
+    function typewriterEnqueue(html, instant = false) {
+        if (!typewriterTarget) return;
+        if (instant) {
+            typewriterTarget.innerHTML += html;
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+            return;
+        }
+        typewriterBuffer.push(html);
+        if (!typewriterRunning) pumpTypewriter();
+    }
+
+    function pumpTypewriter() {
+        if (typewriterBuffer.length === 0) { typewriterRunning = false; return; }
+        typewriterRunning = true;
+        let chunk = typewriterBuffer.shift();
+        let i = 0;
+        const timer = setInterval(() => {
+            if (i < chunk.length) {
+                // 按 HTML 实体 / 标签整体推进，避免截断
+                let end = i;
+                if (chunk[end] === '<') { end = chunk.indexOf('>', end) + 1; }
+                else if (chunk[end] === '&') { end = chunk.indexOf(';', end) + 1; }
+                else { end = i + 1; }
+                typewriterTarget.innerHTML += chunk.substring(i, end);
+                i = end;
+                chatContainer.scrollTop = chatContainer.scrollHeight;
+            } else {
+                clearInterval(timer);
+                pumpTypewriter(); // 取下一段
+            }
+        }, TYPEWRITER_INTERVAL);
+    }
+
+    const STATUS_EMOJI_RE = /[🧠🛠️✅📋🎉🤔⏰📡✨🔄]/;
+
     async function handleSend() {
         const prompt = userInput.value.trim();
         if (!prompt) return;
@@ -382,21 +423,26 @@
         userInput.value = '';
         const responseId = 'resp-' + Date.now();
         const responseWrapper = appendMessage('agent', '', responseId);
+        typewriterTarget = responseWrapper.querySelector('.text-content');
+        typewriterBuffer = [];
+        typewriterRunning = false;
+
         const v = VERSIONS[currentVersion];
         const sseUrl = `http://localhost:8080${v.endpoint}?prompt=${encodeURIComponent(prompt)}&sessionId=hongdou_master&chatId=session_001`;
-        appendSystemLog('连接中: ' + v.engine + '...');
         const eventSource = new EventSource(sseUrl);
         eventSource.onmessage = (event) => {
             const data = event.data;
-            const formattedData = data.replace(/\\n/g, '<br>');
-            if (data.includes('🧠') || data.includes('🛠️') || data.includes('✅') || data.includes('📋') || data.includes('🎉') || data.includes('🤔') || data.includes('⏰') || data.includes('📡') || data.includes('✨') || data.includes('🔄')) {
-                responseWrapper.querySelector('.text-content').innerHTML += `<div class="system-log">${formattedData}</div>`;
-            } else {
-                responseWrapper.querySelector('.text-content').innerHTML += formattedData;
-            }
-            chatContainer.scrollTop = chatContainer.scrollHeight;
+            const formattedData = data.replace(/\n/g, '<br>');
+            const isStatus = STATUS_EMOJI_RE.test(data);
+            typewriterEnqueue(
+                isStatus ? `<div class="system-log">${formattedData}</div>` : formattedData,
+                isStatus // 状态行即时显示，正文打字机
+            );
         };
-        eventSource.onerror = () => { eventSource.close(); };
+        eventSource.onerror = () => {
+            eventSource.close();
+            // 不清 typewriterTarget，让打字机自然排空 buffer
+        };
     }
 
     function appendMessage(role, text, id = '') {
