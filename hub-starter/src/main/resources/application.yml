@@ -4,27 +4,60 @@
 #                   #
 #####################
 
+# 当前服务配置
+server:
+  port: 8080
+
 spring:
   profiles:
     active: dev
   application:
     name: agentic-travel-hub
   ai:
+    # 通义千问配置
     dashscope:
       api-key: xxxxx
       chat:
         options:
           model: qwen-plus
+    # DeepSeek 配置（通过 OpenAI 兼容接口）
     openai:
       api-key: xxxxx
+      base-url: https://api.deepseek.com
       chat:
         options:
           model: deepseek-v4-pro
+    # MCP 工具服务配置
+    mcp:
+      client:
+        enabled: true
+        stdio:
+          connections:
+            # 高德地图 MCP 服务
+            amap-maps-server:
+              command: npx.cmd
+              args:
+                - "-y"
+                - "@amap/amap-maps-mcp-server"
+              env:
+                AMAP_MAPS_API_KEY: "your-amap-api-key"
 
-# 当前服务配置
-server:
-  port: 8080
-
+# 日志配置
 logging:
   level:
     org.springframework.ai: DEBUG
+  file:
+    name: ./logs/travel-hub.log
+
+# ========== 自定义配置 ==========
+
+# 旅行资料库名称
+travel-document-retriever-name: "旅行衣食住行资料库"
+
+# SubAgent 循环次数限制
+max-loop-times:
+  orchestrator-to-subagent: 16
+  planner-to-worker: 7
+
+# Tavily 搜索 API Key
+tavily-api-secret: your-tavily-api-key
