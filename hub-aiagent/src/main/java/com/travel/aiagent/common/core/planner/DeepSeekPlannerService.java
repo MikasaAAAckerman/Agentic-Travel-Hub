@@ -46,6 +46,8 @@ public class DeepSeekPlannerService {
                 这是用户当前的需求：%s，
                 你之前的规划结果是：%s，
                 请根据上述需求进行继续规划。
+                【注意】
+                1、不要去编造工具，工具交由后续的RAG来处理
                 """
                 .formatted(userInput, historyContext);
         log.info("[Planner-Sub] 子Agent 开始任务规划 | userMessage = {}", JSON.toJSONString(userMessage));

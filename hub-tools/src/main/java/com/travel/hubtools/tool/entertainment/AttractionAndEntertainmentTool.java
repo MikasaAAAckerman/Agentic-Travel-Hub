@@ -1,12 +1,9 @@
 package com.travel.hubtools.tool.entertainment;
 
-import com.alibaba.fastjson2.JSONArray;
-import com.alibaba.fastjson2.JSONObject;
-import com.travel.hubtools.client.MapApiClient;
+import com.travel.hubtools.client.TavilyApiClient;
 import com.travel.hubtools.tool.common.IAgentTool;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.model.ChatModel;
-import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -25,7 +22,7 @@ public class AttractionAndEntertainmentTool implements IAgentTool {
     private ChatModel dashScopeChatModel;
 
     @Autowired
-    private MapApiClient mapApiClient;
+    private TavilyApiClient tavilyApiClient;
 
     /**
      * 核心圈层与二次元/小众景点雷达工具
@@ -38,41 +35,8 @@ public class AttractionAndEntertainmentTool implements IAgentTool {
     @Tool(name = "subculturePoiRadarTool", description = "满足笨蛋主人特殊癖好的神器喵！除了常规景点，专门用于检索城市里隐藏的\"二次元打卡地（如广州动漫星城）\"、小众历史文化街区或特定圈层（如汉服、谷子店、电竞）的聚集地！")
     public String subculturePoiRadarTool(@ToolParam(description = "城市") String city, @ToolParam(description = "兴趣标签，如：\"二次元\", \"历史建筑\"") List<String> interestTags) {
         log.info("开始进入方法subculturePoiRadarTool，参数为 city -> {}, interestTags -> {}", city, interestTags);
-
-        try {
-            StringBuilder response = new StringBuilder();
-            response.append(String.format("【%s】圈层景点雷达扫描结果喵！\n\n", city));
-
-            for (String tag : interestTags) {
-                JSONObject result = mapApiClient.searchPOI(tag, city, null, 10, 1);
-
-                if (result != null && result.getJSONArray("pois") != null) {
-                    JSONArray pois = result.getJSONArray("pois");
-                    response.append(String.format("🎯 【%s】相关地点（共%d个）：\n", tag, pois.size()));
-
-                    for (int i = 0; i < Math.min(pois.size(), 5); i++) {
-                        JSONObject poi = pois.getJSONObject(i);
-                        String name = poi.getString("name");
-                        String address = poi.getString("address");
-
-                        response.append(String.format("  %d. %s\n", i + 1, name));
-                        if (address != null && !address.isEmpty()) {
-                            response.append(String.format("     地址：%s\n", address));
-                        }
-                    }
-                    response.append("\n");
-                }
-            }
-
-            response.append("需要更详细的圈层浓度评估可以告诉我喵~");
-
-            log.info("工具subculturePoiRadarTool执行完成");
-            return response.toString();
-
-        } catch (Exception e) {
-            log.error("工具subculturePoiRadarTool执行异常", e);
-            return "抱歉喵，圈层景点搜索过程中出现错误：" + e.getMessage() + "喵~";
-        }
+        String query = String.format("%s %s 打卡地 景点 推荐", city, String.join(" ", interestTags));
+        return tavilyApiClient.searchAsText(query, 5);
     }
 
     /**
@@ -99,7 +63,7 @@ public class AttractionAndEntertainmentTool implements IAgentTool {
                 attractionName, targetDate
         );
 
-        String result = dashScopeChatModel.call(new Prompt(promptText)).getResult().getOutput().getText();
+        String result = tavilyApiClient.searchAsText(promptText, 3);
         log.info("工具museumReservationAndClosureTool执行完成");
         return result;
     }
@@ -130,7 +94,7 @@ public class AttractionAndEntertainmentTool implements IAgentTool {
                 city, startDate, endDate, eventType
         );
 
-        String result = dashScopeChatModel.call(new Prompt(promptText)).getResult().getOutput().getText();
+        String result = tavilyApiClient.searchAsText(promptText, 3);
         log.info("工具localEventCalendarTool执行完成");
         return result;
     }
@@ -159,7 +123,7 @@ public class AttractionAndEntertainmentTool implements IAgentTool {
                 city, budgetLevel
         );
 
-        String result = dashScopeChatModel.call(new Prompt(promptText)).getResult().getOutput().getText();
+        String result = tavilyApiClient.searchAsText(promptText, 3);
         log.info("工具luxuryExperienceCustomizationTool执行完成");
         return result;
     }
@@ -188,7 +152,7 @@ public class AttractionAndEntertainmentTool implements IAgentTool {
                 attractionName
         );
 
-        String result = dashScopeChatModel.call(new Prompt(promptText)).getResult().getOutput().getText();
+        String result = tavilyApiClient.searchAsText(promptText, 3);
         log.info("工具photoSpotAndTravelShootingTool执行完成");
         return result;
     }
@@ -217,7 +181,7 @@ public class AttractionAndEntertainmentTool implements IAgentTool {
                 parkName, visitDate
         );
 
-        String result = dashScopeChatModel.call(new Prompt(promptText)).getResult().getOutput().getText();
+        String result = tavilyApiClient.searchAsText(promptText, 3);
         log.info("工具themeParkStrategyTool执行完成");
         return result;
     }
@@ -233,59 +197,8 @@ public class AttractionAndEntertainmentTool implements IAgentTool {
     @Tool(name = "nightlifeAndBarRadarTool", description = "为成年人的浪漫夜晚量身定制喵！精准探测城市里隐藏在暗巷中的 Speakeasy、Livehouse，以及适合情侣安静微醺的高空露台 Bar喵！")
     public String nightlifeAndBarRadarTool(@ToolParam(description = "位置") String location, @ToolParam(description = "氛围类型，如：\"安静微醺\", \"Livehouse\"") String vibeType, @ToolParam(description = "所在城市名") String city) {
         log.info("开始进入方法nightlifeAndBarRadarTool，参数为 location -> {}, vibeType -> {}, city -> {}", location, vibeType, city);
-
-        try {
-            String coord = mapApiClient.geocode(location, city);
-
-            if (coord == null) {
-                return "抱歉喵，无法找到位置的坐标信息，请检查地址是否正确喵~";
-            }
-
-            // 搜索周边酒吧和夜生活场所
-            String keywords = vibeType + " 酒吧";
-            JSONObject result = mapApiClient.searchPOIAround(keywords, coord, 2000, "080300");
-
-            if (result == null) {
-                return "抱歉喵，酒吧搜索失败，请稍后再试喵~";
-            }
-
-            JSONArray pois = result.getJSONArray("pois");
-            if (pois == null || pois.isEmpty()) {
-                return String.format("抱歉喵，在%s附近没有找到%s风格的酒吧喵~", location, vibeType);
-            }
-
-            StringBuilder response = new StringBuilder();
-            response.append(String.format("【%s】附近%s风酒吧/夜生活场所喵！\n\n", location, vibeType));
-
-            for (int i = 0; i < Math.min(pois.size(), 5); i++) {
-                JSONObject poi = pois.getJSONObject(i);
-                String name = poi.getString("name");
-                String address = poi.getString("address");
-                String distance = poi.getString("distance");
-
-                response.append(String.format("%d. 【%s】\n", i + 1, name));
-                response.append(String.format("   距离：%s 米\n", distance));
-                if (address != null) response.append(String.format("   地址：%s\n", address));
-
-                JSONObject bizExt = poi.getJSONObject("biz_ext");
-                if (bizExt != null) {
-                    String rating = bizExt.getString("rating");
-                    String cost = bizExt.getString("cost");
-                    if (rating != null) response.append(String.format("   评分：%s 分\n", rating));
-                    if (cost != null) response.append(String.format("   人均：%s 元\n", cost));
-                }
-                response.append("\n");
-            }
-
-            response.append("建议提前查看营业时间，部分Speakeasy需要预约喵~\n");
-            response.append("微醺虽好，可不要贪杯喵~");
-            log.info("工具nightlifeAndBarRadarTool执行完成");
-            return response.toString();
-
-        } catch (Exception e) {
-            log.error("工具nightlifeAndBarRadarTool执行异常", e);
-            return "抱歉喵，酒吧搜索过程中出现错误：" + e.getMessage() + "喵~";
-        }
+        String query = String.format("%s %s %s 酒吧 夜生活", city, location, vibeType);
+        return tavilyApiClient.searchAsText(query, 5);
     }
 
     /**
@@ -312,7 +225,7 @@ public class AttractionAndEntertainmentTool implements IAgentTool {
                 city, spaType
         );
 
-        String result = dashScopeChatModel.call(new Prompt(promptText)).getResult().getOutput().getText();
+        String result = tavilyApiClient.searchAsText(promptText, 3);
         log.info("工具hotSpringAndSpaTool执行完成");
         return result;
     }
@@ -341,7 +254,7 @@ public class AttractionAndEntertainmentTool implements IAgentTool {
                 templeName, prayGoal, prayGoal
         );
 
-        String result = dashScopeChatModel.call(new Prompt(promptText)).getResult().getOutput().getText();
+        String result = tavilyApiClient.searchAsText(promptText, 3);
         log.info("工具templeAndPrayingGuideTool执行完成");
         return result;
     }
@@ -370,7 +283,7 @@ public class AttractionAndEntertainmentTool implements IAgentTool {
                 region, difficultyLevel
         );
 
-        String result = dashScopeChatModel.call(new Prompt(promptText)).getResult().getOutput().getText();
+        String result = tavilyApiClient.searchAsText(promptText, 3);
         log.info("工具hikingAndCampingTrailTool执行完成");
         return result;
     }
@@ -398,7 +311,7 @@ public class AttractionAndEntertainmentTool implements IAgentTool {
                 attractionName
         );
 
-        String result = dashScopeChatModel.call(new Prompt(promptText)).getResult().getOutput().getText();
+        String result = tavilyApiClient.searchAsText(promptText, 3);
         log.info("工具historicalRelicAudioGuideTool执行完成");
         return result;
     }
@@ -427,7 +340,7 @@ public class AttractionAndEntertainmentTool implements IAgentTool {
                 location, theme
         );
 
-        String result = dashScopeChatModel.call(new Prompt(promptText)).getResult().getOutput().getText();
+        String result = tavilyApiClient.searchAsText(promptText, 3);
         log.info("工具escapeRoomAndScriptMurderTool执行完成");
         return result;
     }
@@ -443,44 +356,8 @@ public class AttractionAndEntertainmentTool implements IAgentTool {
     @Tool(name = "localMarketAndBazaarTool", description = "感受最地道市井气息的工具喵！追踪那些只在特定日子才开市的非遗民俗集市、古董文玩跳蚤市场、或者充满文艺气息的文创后备箱集市。")
     public String localMarketAndBazaarTool(@ToolParam(description = "城市") String city, @ToolParam(description = "日期，格式：yyyy-MM-dd") String date) {
         log.info("开始进入方法localMarketAndBazaarTool，参数为 city -> {}, date -> {}", city, date);
-
-        try {
-            // 搜索集市和市场
-            JSONObject result = mapApiClient.searchPOI("集市 市场 跳蚤市场 文创集市", city, null, 10, 1);
-
-            if (result == null) {
-                return "抱歉喵，集市搜索失败，请稍后再试喵~";
-            }
-
-            JSONArray pois = result.getJSONArray("pois");
-            if (pois == null || pois.isEmpty()) {
-                return String.format("抱歉喵，在%s没有找到集市和市场喵~", city);
-            }
-
-            StringBuilder response = new StringBuilder();
-            response.append(String.format("【%s】%s特色集市喵！\n\n", city, date));
-
-            for (int i = 0; i < Math.min(pois.size(), 5); i++) {
-                JSONObject poi = pois.getJSONObject(i);
-                String name = poi.getString("name");
-                String address = poi.getString("address");
-                String type = poi.getString("type");
-
-                response.append(String.format("%d. 【%s】\n", i + 1, name));
-                if (address != null) response.append(String.format("   地址：%s\n", address));
-                if (type != null) response.append(String.format("   类型：%s\n", type));
-                response.append("\n");
-            }
-
-            response.append("部分集市仅在特定日期开放，建议提前电话确认喵~\n");
-            response.append("逛集市记得带现金和购物袋喵~");
-            log.info("工具localMarketAndBazaarTool执行完成");
-            return response.toString();
-
-        } catch (Exception e) {
-            log.error("工具localMarketAndBazaarTool执行异常", e);
-            return "抱歉喵，集市搜索过程中出现错误：" + e.getMessage() + "喵~";
-        }
+        String query = String.format("%s %s 集市 市场 跳蚤市场 文创集市", city, date);
+        return tavilyApiClient.searchAsText(query, 5);
     }
 
     /**
@@ -507,7 +384,7 @@ public class AttractionAndEntertainmentTool implements IAgentTool {
                 zooName, animalType
         );
 
-        String result = dashScopeChatModel.call(new Prompt(promptText)).getResult().getOutput().getText();
+        String result = tavilyApiClient.searchAsText(promptText, 3);
         log.info("工具zooAndAquariumFeedingTimeTool执行完成");
         return result;
     }
@@ -523,52 +400,8 @@ public class AttractionAndEntertainmentTool implements IAgentTool {
     @Tool(name = "cityViewCableCarAndFerryTool", description = "专门查询那些能把城市全貌尽收眼底的特殊交通工具喵！例如广州塔的摩天轮、白云山的高空索道、或者珠江夜游的VIP露天甲板票的余票及最佳观赏时段。")
     public String cityViewCableCarAndFerryTool(@ToolParam(description = "景点名称") String attractionName, @ToolParam(description = "票种类型，如：\"摩天轮\", \"VIP露天甲板\"") String ticketType, @ToolParam(description = "所在城市名") String city) {
         log.info("开始进入方法cityViewCableCarAndFerryTool，参数为 attractionName -> {}, ticketType -> {}, city -> {}", attractionName, ticketType, city);
-
-        try {
-            // 搜索景点 + 票种信息
-            String keywords = attractionName + " " + ticketType;
-            JSONObject result = mapApiClient.searchPOI(keywords, city, null, 10, 1);
-
-            if (result == null) {
-                return "抱歉喵，景点票务查询失败，请稍后再试喵~";
-            }
-
-            JSONArray pois = result.getJSONArray("pois");
-            if (pois == null || pois.isEmpty()) {
-                return String.format("抱歉喵，没有找到%s的%s票务信息喵~", attractionName, ticketType);
-            }
-
-            JSONObject poi = pois.getJSONObject(0);
-            String name = poi.getString("name");
-            String address = poi.getString("address");
-            String tel = poi.getString("tel");
-
-            StringBuilder response = new StringBuilder();
-            response.append(String.format("【%s】%s票务信息喵！\n\n", attractionName, ticketType));
-            response.append(String.format("名称：%s\n", name));
-            if (address != null) response.append(String.format("地址：%s\n", address));
-            if (tel != null && !tel.isEmpty()) {
-                response.append(String.format("咨询电话：%s\n", tel));
-            }
-
-            // 获取评分和价格
-            JSONObject bizExt = poi.getJSONObject("biz_ext");
-            if (bizExt != null) {
-                String rating = bizExt.getString("rating");
-                String cost = bizExt.getString("cost");
-                if (rating != null) response.append(String.format("评分：%s 分\n", rating));
-                if (cost != null) response.append(String.format("参考价：%s 元\n", cost));
-            }
-
-            response.append("\n建议提前致电确认余票和最佳观赏时段喵~\n");
-            response.append("热门景点建议工作日前往，避开节假日人流高峰喵~");
-            log.info("工具cityViewCableCarAndFerryTool执行完成");
-            return response.toString();
-
-        } catch (Exception e) {
-            log.error("工具cityViewCableCarAndFerryTool执行异常", e);
-            return "抱歉喵，票务查询过程中出现错误：" + e.getMessage() + "喵~";
-        }
+        String query = String.format("%s %s %s 票价 余票 预约", city, attractionName, ticketType);
+        return tavilyApiClient.searchAsText(query, 3);
     }
 
     /**
@@ -595,7 +428,7 @@ public class AttractionAndEntertainmentTool implements IAgentTool {
                 city, facilityRequirement
         );
 
-        String result = dashScopeChatModel.call(new Prompt(promptText)).getResult().getOutput().getText();
+        String result = tavilyApiClient.searchAsText(promptText, 3);
         log.info("工具vrAndEsportsArenaTool执行完成");
         return result;
     }
@@ -624,7 +457,7 @@ public class AttractionAndEntertainmentTool implements IAgentTool {
                 location, sportsType
         );
 
-        String result = dashScopeChatModel.call(new Prompt(promptText)).getResult().getOutput().getText();
+        String result = tavilyApiClient.searchAsText(promptText, 3);
         log.info("工具extremeSportsChallengeTool执行完成");
         return result;
     }
@@ -653,7 +486,7 @@ public class AttractionAndEntertainmentTool implements IAgentTool {
                 city, workshopType
         );
 
-        String result = dashScopeChatModel.call(new Prompt(promptText)).getResult().getOutput().getText();
+        String result = tavilyApiClient.searchAsText(promptText, 3);
         log.info("工具culturalWorkshopAndDIYTool执行完成");
         return result;
     }
@@ -682,7 +515,7 @@ public class AttractionAndEntertainmentTool implements IAgentTool {
                 city, screenType
         );
 
-        String result = dashScopeChatModel.call(new Prompt(promptText)).getResult().getOutput().getText();
+        String result = tavilyApiClient.searchAsText(promptText, 3);
         log.info("工具cinemaAndTheaterShowtimeTool执行完成");
         return result;
     }
@@ -711,7 +544,7 @@ public class AttractionAndEntertainmentTool implements IAgentTool {
                 city, date
         );
 
-        String result = dashScopeChatModel.call(new Prompt(promptText)).getResult().getOutput().getText();
+        String result = tavilyApiClient.searchAsText(promptText, 3);
         log.info("工具festivalAndLightShowTool执行完成");
         return result;
     }

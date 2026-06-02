@@ -1,5 +1,6 @@
 package com.travel.hubtools.tool.travel;
 
+import com.travel.hubtools.client.TavilyApiClient;
 import com.travel.hubtools.tool.common.IAgentTool;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.model.ChatModel;
@@ -18,6 +19,9 @@ public class FlightTicketTool implements IAgentTool {
 
     @Autowired
     private ChatModel dashScopeChatModel;
+
+    @Autowired
+    private TavilyApiClient tavilyApiClient;
 
     /**
      * 基础航线与舱位比价工具
@@ -47,7 +51,7 @@ public class FlightTicketTool implements IAgentTool {
                 origin, destination, date, cabinClass
         );
 
-        String result = dashScopeChatModel.call(new Prompt(promptText)).getResult().getOutput().getText();
+        String result = tavilyApiClient.searchAsText(promptText, 3);
         log.info("工具flightAvailabilityAndPriceTool执行完成");
         return result;
     }
@@ -76,7 +80,7 @@ public class FlightTicketTool implements IAgentTool {
                 flightNumber, cabinClass
         );
 
-        String result = dashScopeChatModel.call(new Prompt(promptText)).getResult().getOutput().getText();
+        String result = tavilyApiClient.searchAsText(promptText, 3);
         log.info("工具baggageAllowanceTool执行完成");
         return result;
     }
@@ -96,7 +100,7 @@ public class FlightTicketTool implements IAgentTool {
                 flightNumber, date
         );
 
-        String result = dashScopeChatModel.call(new Prompt(promptText)).getResult().getOutput().getText();
+        String result = tavilyApiClient.searchAsText(promptText, 3);
         log.info("工具flightPunctualityTool执行完成");
         return result;
     }
@@ -118,7 +122,7 @@ public class FlightTicketTool implements IAgentTool {
                 flightNumber, date
         );
 
-        String result = dashScopeChatModel.call(new Prompt(promptText)).getResult().getOutput().getText();
+        String result = tavilyApiClient.searchAsText(promptText, 3);
         log.info("工具aircraftSeatComfortTool执行完成");
         return result;
     }
@@ -139,7 +143,7 @@ public class FlightTicketTool implements IAgentTool {
                 flightNumber, transitAirportCode, userNationality
         );
 
-        String result = dashScopeChatModel.call(new Prompt(promptText)).getResult().getOutput().getText();
+        String result = tavilyApiClient.searchAsText(promptText, 3);
         log.info("工具transitVisaAndBaggageTool执行完成");
         return result;
     }
@@ -158,7 +162,7 @@ public class FlightTicketTool implements IAgentTool {
                 flightNumber
         );
 
-        String result = dashScopeChatModel.call(new Prompt(promptText)).getResult().getOutput().getText();
+        String result = tavilyApiClient.searchAsText(promptText, 3);
         log.info("工具inFlightConnectivityTool执行完成");
         return result;
     }
@@ -178,7 +182,7 @@ public class FlightTicketTool implements IAgentTool {
                 flightNumber, mealPreference
         );
 
-        String result = dashScopeChatModel.call(new Prompt(promptText)).getResult().getOutput().getText();
+        String result = tavilyApiClient.searchAsText(promptText, 3);
         log.info("工具specialMealRequestTool执行完成");
         return result;
     }
@@ -199,7 +203,7 @@ public class FlightTicketTool implements IAgentTool {
                 flightNumber
         );
 
-        String result = dashScopeChatModel.call(new Prompt(promptText)).getResult().getOutput().getText();
+        String result = tavilyApiClient.searchAsText(promptText, 3);
         log.info("工具redEyeJetLagTool执行完成");
         return result;
     }
@@ -219,7 +223,7 @@ public class FlightTicketTool implements IAgentTool {
                 airlineCode, petType
         );
 
-        String result = dashScopeChatModel.call(new Prompt(promptText)).getResult().getOutput().getText();
+        String result = tavilyApiClient.searchAsText(promptText, 3);
         log.info("工具aviationPetPolicyTool执行完成");
         return result;
     }
@@ -239,7 +243,7 @@ public class FlightTicketTool implements IAgentTool {
                 origin, destination, targetDate
         );
 
-        String result = dashScopeChatModel.call(new Prompt(promptText)).getResult().getOutput().getText();
+        String result = tavilyApiClient.searchAsText(promptText, 3);
         log.info("工具flightPriceTrendTool执行完成");
         return result;
     }
@@ -258,7 +262,7 @@ public class FlightTicketTool implements IAgentTool {
                 flightNumber, preference
         );
 
-        String result = dashScopeChatModel.call(new Prompt(promptText)).getResult().getOutput().getText();
+        String result = tavilyApiClient.searchAsText(promptText, 3);
         log.info("工具seatSelectionPreferenceTool执行完成");
         return result;
     }
@@ -279,7 +283,7 @@ public class FlightTicketTool implements IAgentTool {
                 flightNumber, infantCount
         );
 
-        String result = dashScopeChatModel.call(new Prompt(promptText)).getResult().getOutput().getText();
+        String result = tavilyApiClient.searchAsText(promptText, 3);
         log.info("工具infantBassinetAndFamilyTool执行完成");
         return result;
     }
@@ -299,7 +303,7 @@ public class FlightTicketTool implements IAgentTool {
                 flightNumber, date
         );
 
-        String result = dashScopeChatModel.call(new Prompt(promptText)).getResult().getOutput().getText();
+        String result = tavilyApiClient.searchAsText(promptText, 3);
         log.info("工具turbulenceForecastTool执行完成");
         return result;
     }
@@ -319,7 +323,7 @@ public class FlightTicketTool implements IAgentTool {
                 flightNumber, bookingClass
         );
 
-        String result = dashScopeChatModel.call(new Prompt(promptText)).getResult().getOutput().getText();
+        String result = tavilyApiClient.searchAsText(promptText, 3);
         log.info("工具refundAndChangeFeeTool执行完成");
         return result;
     }
@@ -339,7 +343,7 @@ public class FlightTicketTool implements IAgentTool {
                 departureAirport, flightTime
         );
 
-        String result = dashScopeChatModel.call(new Prompt(promptText)).getResult().getOutput().getText();
+        String result = tavilyApiClient.searchAsText(promptText, 3);
         log.info("工具securityWaitTimeTool执行完成");
         return result;
     }
@@ -360,7 +364,7 @@ public class FlightTicketTool implements IAgentTool {
                 airportCode, terminal, membershipType
         );
 
-        String result = dashScopeChatModel.call(new Prompt(promptText)).getResult().getOutput().getText();
+        String result = tavilyApiClient.searchAsText(promptText, 3);
         log.info("工具airportLoungeAccessTool执行完成");
         return result;
     }
@@ -381,7 +385,7 @@ public class FlightTicketTool implements IAgentTool {
                 flightNumber, medicalNeed
         );
 
-        String result = dashScopeChatModel.call(new Prompt(promptText)).getResult().getOutput().getText();
+        String result = tavilyApiClient.searchAsText(promptText, 3);
         log.info("工具wheelchairAndMedicalTool执行完成");
         return result;
     }
@@ -401,7 +405,7 @@ public class FlightTicketTool implements IAgentTool {
                 airlineCode, equipmentType
         );
 
-        String result = dashScopeChatModel.call(new Prompt(promptText)).getResult().getOutput().getText();
+        String result = tavilyApiClient.searchAsText(promptText, 3);
         log.info("工具oversizedSportsEquipmentTool执行完成");
         return result;
     }
@@ -421,7 +425,7 @@ public class FlightTicketTool implements IAgentTool {
                 flightNumber
         );
 
-        String result = dashScopeChatModel.call(new Prompt(promptText)).getResult().getOutput().getText();
+        String result = tavilyApiClient.searchAsText(promptText, 3);
         log.info("工具onlineCheckInTool执行完成");
         return result;
     }
@@ -441,7 +445,7 @@ public class FlightTicketTool implements IAgentTool {
                 flightNumber
         );
 
-        String result = dashScopeChatModel.call(new Prompt(promptText)).getResult().getOutput().getText();
+        String result = tavilyApiClient.searchAsText(promptText, 3);
         log.info("工具carbonEmissionAndGreenFlightTool执行完成");
         return result;
     }
