@@ -29,7 +29,7 @@ public class ShortTermMemory {
     private ChatClient qwenChatClient;
 
     /** 当对话消息数超过此阈值时触发压缩 */
-    private static final int COMPRESS_THRESHOLD = 10;
+    private static final int COMPRESS_THRESHOLD = 20;
 
     public String getMemoryByUserIdAndChatId(String userId, String chatId) {
         log.info(" 开始获取用户对话记忆");

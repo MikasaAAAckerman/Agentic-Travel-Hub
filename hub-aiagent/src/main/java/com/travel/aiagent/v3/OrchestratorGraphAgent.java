@@ -77,7 +77,7 @@ public class OrchestratorGraphAgent {
                 }
                 yield String.format("🧠 [第%d步] 调度者正在分析需求...\n", loopTimes);
             }
-            case "finish" -> String.format("🎉 已帮您完成所有的任务规划，结论如下：\n%s\n", conclusion);
+            case "finish" -> "🎉 正在为您汇总结果 ...";
             case "clarify" -> String.format("🤔 红豆还需要主人确认一下信息喵～\n%s\n", conclusion);
             case "overMaxLoopTimes" -> "⏰ 规划轮次已达上限，正在汇总已有结果...\n";
             default -> {

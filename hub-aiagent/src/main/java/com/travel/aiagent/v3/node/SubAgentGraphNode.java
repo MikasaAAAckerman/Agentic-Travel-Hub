@@ -44,13 +44,10 @@ public class SubAgentGraphNode {
     public AsyncNodeAction plannerNode() {
         NodeAction action = state -> {
 
-            // 获取调度者Agent派发的任务规划
+            // 获取调度者Agent派发的任务规划（包含用户原始需求+子任务，始终不变）
             String orchestratorPlan = state.value(GraphStateKey.ORCHESTRATOR_AGENT_PLAN_DETAIL.getKey(), "");
-            // 获取子任务的任务规划
+            // 获取子Agent上一轮自己的任务规划
             String subAgentPlan = state.value(GraphStateKey.SUB_AGENT_PLAN_DETAIL.getKey(), "");
-            // 调度者派发任务 -> 子Agent根据派发任务规划属于自己的任务 -> 直到自己规划给自己的任务做完，那么结束返回结果给到调度者
-            String myPlan = StringUtils.isNotBlank(subAgentPlan) ? subAgentPlan : orchestratorPlan;
-
             Integer loopTimes = state.value(GraphStateKey.LOOP_TIMES.getKey(), 0);
             String subAgentName = state.value(GraphStateKey.SUB_AGENT_NAME.getKey(), "");
 
@@ -58,7 +55,16 @@ public class SubAgentGraphNode {
 
             String historyWorkDetail = state.value(GraphStateKey.WORKER_CONCLUSION.getKey(), "");
 
-            PlanDetailVO plan = plannerService.doSubAgentPlan(myPlan, historyWorkDetail);
+            // 始终以 orchestratorPlan（含用户上下文）为基础
+            // 如果有上一轮自己的计划，作为补充信息传入
+            String myPlan;
+            if (StringUtils.isNotBlank(subAgentPlan)) {
+                myPlan = orchestratorPlan + "\n【上一轮执行计划】" + subAgentPlan;
+            } else {
+                myPlan = orchestratorPlan;
+            }
+
+            PlanDetailVO plan = plannerService.doSubAgentPlan(myPlan, historyWorkDetail, subAgentName);
 
             Map<String, Object> resultMap = new HashMap<>();
             resultMap.put(GraphStateKey.ACTION.getKey(), plan.getAction());

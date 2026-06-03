@@ -40,19 +40,19 @@ public class DeepSeekPlannerService {
         return result;
     }
 
-    /** 子 Agent 专用：不带 SUB_AGENT_CALL 的 Planner */
-    public PlanDetailVO doSubAgentPlan(String userInput, String historyContext) {
+    /**
+     * 子 Agent 专用：不带 SUB_AGENT_CALL 的 Planner
+     */
+    public PlanDetailVO doSubAgentPlan(String userInput, String historyContext, String subAgentName) {
         String userMessage = """
                 这是用户当前的需求：%s，
                 你之前的规划结果是：%s，
                 请根据上述需求进行继续规划。
-                【注意】
-                1、不要去编造工具，工具交由后续的RAG来处理
                 """
                 .formatted(userInput, historyContext);
-        log.info("[Planner-Sub] 子Agent 开始任务规划 | userMessage = {}", JSON.toJSONString(userMessage));
+        log.info("[Planner-Sub] {} 开始任务规划 | userMessage = {}", subAgentName, JSON.toJSONString(userMessage));
         PlanDetailVO result = deepseekPlannerClient.prompt()
-                .system(SystemPrompt.TRAVEL_SUB_AGENT_SYSTEM_PROMPT)
+                .system(SystemPrompt.TRAVEL_SUB_AGENT_PLANNER_SYSTEM_PROMPT)
                 .user(userMessage)
                 .call().entity(PlanDetailVO.class);
         log.info("[Planner-Sub] 子Agent 任务规划完成 | result = {} ", JSON.toJSONString(result));

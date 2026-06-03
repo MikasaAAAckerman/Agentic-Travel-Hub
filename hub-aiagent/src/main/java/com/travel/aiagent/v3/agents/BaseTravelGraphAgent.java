@@ -43,7 +43,7 @@ public abstract class BaseTravelGraphAgent implements ITravelGraphAgent {
         init.put(GraphStateKey.SUB_AGENT_NAME.getKey(), name());
         init.put(GraphStateKey.ORCHESTRATOR_AGENT_PLAN_DETAIL.getKey(), task);
 
-        log.info("[V3-Sub] {} 开始执行", name());
+        log.info("[V3-Sub] {} 开始执行上游task {} ", name(), task);
         Optional<OverAllState> result = subGraph.invoke(init);
         String conclusion = result
                 .map(s -> s.value(GraphStateKey.ORCHESTRATOR_AGENT_CONCLUSION.getKey(), ""))
