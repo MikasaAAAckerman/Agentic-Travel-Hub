@@ -55,7 +55,7 @@ public class DeepSeekPlannerService {
                 .system(SystemPrompt.TRAVEL_SUB_AGENT_PLANNER_SYSTEM_PROMPT)
                 .user(userMessage)
                 .call().entity(PlanDetailVO.class);
-        log.info("[Planner-Sub] 子Agent 任务规划完成 | result = {} ", JSON.toJSONString(result));
+        log.info("[Planner-Sub] {} 任务规划完成 | result = {} ", subAgentName, JSON.toJSONString(result));
         return result;
     }
 

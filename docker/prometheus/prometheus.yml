@@ -1,0 +1,15 @@
+# Prometheus 配置文件
+# 采集 Agentic-Travel-Hub 的指标
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # Spring Boot Actuator + Micrometer
+  - job_name: 'agentic-travel-hub'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['host.docker.internal:8080']
+        labels:
+          application: 'agentic-travel-hub'

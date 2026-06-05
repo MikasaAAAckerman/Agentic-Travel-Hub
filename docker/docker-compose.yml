@@ -1,0 +1,81 @@
+version: '3.8'
+
+# ============================================================
+# Agentic-Travel-Hub 可观测性栈
+# 一键启动：Grafana + Prometheus + Jaeger
+# ============================================================
+#
+# 启动命令：
+#   cd docker && docker-compose up -d
+#
+# 访问地址：
+#   Grafana:    http://localhost:3000  (admin/admin)
+#   Prometheus: http://localhost:9090
+#   Jaeger:     http://localhost:16686
+#
+# ============================================================
+
+services:
+
+  # ==================== Prometheus ====================
+  # 指标采集与存储
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.enable-lifecycle'
+    restart: unless-stopped
+    networks:
+      - monitoring
+
+  # ==================== Grafana ====================
+  # 可视化面板
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+    depends_on:
+      - prometheus
+      - jaeger
+    restart: unless-stopped
+    networks:
+      - monitoring
+
+  # ==================== Jaeger ====================
+  # 分布式追踪
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: jaeger
+    ports:
+      - "16686:16686"   # Jaeger UI
+      - "4318:4318"     # OTLP HTTP (接收 traces)
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    restart: unless-stopped
+    networks:
+      - monitoring
+
+volumes:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  monitoring:
+    driver: bridge

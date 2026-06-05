@@ -49,6 +49,25 @@ logging:
   file:
     name: ./logs/travel-hub.log
 
+# Actuator + Prometheus 指标配置
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      show-details: always
+  metrics:
+    tags:
+      application: ${spring.application.name}
+  tracing:
+    sampling:
+      probability: 1.0
+  otlp:
+    tracing:
+      endpoint: http://localhost:4318/v1/traces
+
 # ========== 自定义配置 ==========
 
 # 旅行资料库名称

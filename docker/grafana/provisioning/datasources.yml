@@ -1,0 +1,20 @@
+# Grafana 数据源配置
+# 自动配置 Prometheus 和 Jaeger
+
+apiVersion: 1
+
+datasources:
+  # Prometheus 数据源
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: true
+
+  # Jaeger 数据源（分布式追踪）
+  - name: Jaeger
+    type: jaeger
+    access: proxy
+    url: http://jaeger:16686
+    editable: true

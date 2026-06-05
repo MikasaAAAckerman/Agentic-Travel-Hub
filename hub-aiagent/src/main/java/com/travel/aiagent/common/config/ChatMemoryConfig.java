@@ -15,7 +15,7 @@ public class ChatMemoryConfig {
 
     @Bean
     public ChatMemory chatMemory() {
-        log.info("[Config] 初始化 ChatMemory | maxMessages=20 (消息窗口模式)");
+        log.info("[Config] 初始化 ChatMemory ");
         ChatMemory chatMemory = MessageWindowChatMemory.builder().maxMessages(20).build();
         log.debug("[Config] ChatMemory 配置完成");
         return chatMemory;

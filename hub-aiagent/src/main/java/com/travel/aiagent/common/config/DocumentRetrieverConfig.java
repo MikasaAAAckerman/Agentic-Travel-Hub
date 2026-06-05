@@ -29,7 +29,7 @@ public class DocumentRetrieverConfig {
 
     @Bean("travelDocumentRetriever")
     public DocumentRetriever travelDocumentRetriever(DashScopeApi dashscopeApi) {
-        log.info("[Config] 初始化旅行文档检索器 | index={} | topK=3", travelDocumentRetrieverName);
+        log.info("[Config] 初始化旅行文档检索器 | index={} ", travelDocumentRetrieverName);
         DocumentRetriever retriever = new DashScopeDocumentRetriever(dashscopeApi,
                 DashScopeDocumentRetrieverOptions.builder()
                         .indexName(travelDocumentRetrieverName)
