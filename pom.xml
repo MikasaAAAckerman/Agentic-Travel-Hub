@@ -32,6 +32,7 @@
         <lombok.version>1.18.46</lombok.version>
         <log4j.version>2.25.4</log4j.version>
         <spring-mcp.version>1.1.3</spring-mcp.version>
+        <spring-ai-pgvector.version>1.1.5</spring-ai-pgvector.version>
     </properties>
 
     <dependencies>
@@ -121,6 +122,13 @@
                 <groupId>org.springframework.ai</groupId>
                 <artifactId>spring-ai-starter-mcp-client-webflux</artifactId>
                 <version>${spring-mcp.version}</version>
+                <scope>compile</scope>
+            </dependency>
+            <!-- PGVector 向量数据库 -->
+            <dependency>
+                <groupId>org.springframework.ai</groupId>
+                <artifactId>spring-ai-starter-vector-store-pgvector</artifactId>
+                <version>${spring-ai-pgvector.version}</version>
                 <scope>compile</scope>
             </dependency>
 

@@ -122,10 +122,27 @@ services:
     networks:
       - monitoring
 
+  # ==================== PostgreSQL + PGVector ====================
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: postgres-pgvector
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: travel_hub
+      POSTGRES_USER: travel
+      POSTGRES_PASSWORD: travel123
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks:
+      - monitoring
+
 volumes:
   prometheus_data:
   grafana_data:
   elasticsearch_data:
+  postgres_data:
 
 networks:
   monitoring:
