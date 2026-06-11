@@ -2,11 +2,13 @@ package com.travel.aiagent.v3.node;
 
 import com.alibaba.cloud.ai.graph.action.AsyncNodeAction;
 import com.alibaba.cloud.ai.graph.action.NodeAction;
+import com.travel.aiagent.common.constant.AgentEventType;
 import com.travel.aiagent.common.constant.GraphStateKey;
 import com.travel.aiagent.common.core.planner.DeepSeekPlannerService;
 import com.travel.aiagent.common.domain.PlanDetailVO;
 import com.travel.aiagent.common.domain.prompt.SystemPrompt;
 import com.travel.aiagent.common.memory.ShortTermMemory;
+import com.travel.aiagent.common.utils.AgentMDC;
 import com.travel.aiagent.v3.agents.BaseTravelGraphAgent;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -42,6 +44,8 @@ public class OrchestratorGraphNode {
             String chatMemory = shortTermMemory.getMemoryByUserIdAndChatId(userId, chatId);
             Integer loopTimes = state.value(GraphStateKey.LOOP_TIMES.getKey(), 0);
 
+            AgentMDC.setEventType(AgentEventType.ORCHESTRATOR_ROUND.getType());
+            AgentMDC.setRound(loopTimes);
             log.info("[V3] Orchestrator planner 节点 | 第{}轮调度", loopTimes);
 
             StringBuilder subAgentDescriptionBuilder = new StringBuilder();
@@ -59,7 +63,16 @@ public class OrchestratorGraphNode {
             resultMap.put(GraphStateKey.ORCHESTRATOR_AGENT_CONCLUSION.getKey(), planDetailVO.getConclusion());
             resultMap.put(GraphStateKey.LOOP_TIMES.getKey(), loopTimes + 1);
 
-            log.info("[V3] Orchestrator planner → ACTION={}, SUB_AGENT_NAME={}", planDetailVO.getAction(), planDetailVO.getSubAgentName());
+            if ("SUB_AGENT_CALL".equals(planDetailVO.getAction())) {
+                AgentMDC.setEventType(AgentEventType.TASK_DISPATCH.getType());
+                AgentMDC.setSubAgentName(planDetailVO.getSubAgentName());
+                log.info("[V3] Orchestrator 派发任务 → subAgent={} | planDetail={}", planDetailVO.getSubAgentName(), planDetailVO.getPlanDetail());
+            } else {
+                AgentMDC.setEventType(AgentEventType.ORCHESTRATOR_FINISH.getType());
+                log.info("[V3] Orchestrator planner → ACTION={} | conclusion={}", planDetailVO.getAction(), planDetailVO.getConclusion());
+            }
+
+            AgentMDC.clearContentContext();
             return resultMap;
         };
         return AsyncNodeAction.node_async(action);
@@ -75,12 +88,18 @@ public class OrchestratorGraphNode {
             String chatId = state.value(GraphStateKey.CHAT_ID.getKey(), "");
             String subAgentName = state.value(GraphStateKey.SUB_AGENT_NAME.getKey(), "");
 
-            log.info("[V3] {} 节点 | plan={}", baseTravelGraphAgent.name(), planDetail);
+            AgentMDC.setSubAgentName(subAgentName);
+            AgentMDC.setEventType(AgentEventType.AGENT_INVOKE.getType());
+            log.info("[V3] {} 开始执行 | plan={}", baseTravelGraphAgent.name(), planDetail);
 
             String result = baseTravelGraphAgent.execute(planDetail, userId, chatId, null);
             shortTermMemory.addAgentTalking(userId, chatId, subAgentName + " 执行完成，结论：" + result);
 
-            log.info("[V3] {} → 完成", baseTravelGraphAgent.name());
+            AgentMDC.setEventType(AgentEventType.AGENT_FINISH.getType());
+            AgentMDC.setWorkerConclusion(result);
+            log.info("[V3] {} 执行完成 | result={}", baseTravelGraphAgent.name(), result);
+
+            AgentMDC.clearContentContext();
             return Map.of();
         };
         return AsyncNodeAction.node_async(action);

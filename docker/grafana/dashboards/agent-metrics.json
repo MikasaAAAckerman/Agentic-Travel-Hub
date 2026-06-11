@@ -1,0 +1,213 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "title": "📊 请求概览",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "collapsed": false
+    },
+    {
+      "title": "Agent 调用总次数",
+      "type": "stat",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 1 },
+      "targets": [{ "expr": "sum(agent_invoke_total)", "legendFormat": "总调用" }],
+      "fieldConfig": { "defaults": { "thresholds": { "steps": [{ "color": "green", "value": null }] } } }
+    },
+    {
+      "title": "工具调用总数",
+      "type": "stat",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 1 },
+      "targets": [{ "expr": "sum(tool_call_total)", "legendFormat": "工具调用" }],
+      "fieldConfig": { "defaults": { "thresholds": { "steps": [{ "color": "blue", "value": null }] } } }
+    },
+    {
+      "title": "工具错误数",
+      "type": "stat",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 1 },
+      "targets": [{ "expr": "sum(tool_error_total)", "legendFormat": "错误" }],
+      "fieldConfig": { "defaults": { "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] } } }
+    },
+    {
+      "title": "重试次数",
+      "type": "stat",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 1 },
+      "targets": [{ "expr": "sum(agent_retry_total)", "legendFormat": "重试" }],
+      "fieldConfig": { "defaults": { "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 3 }, { "color": "red", "value": 10 }] } } }
+    },
+    {
+      "title": "CLARIFY 次数",
+      "type": "stat",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 1 },
+      "targets": [{ "expr": "sum(agent_clarify_total)", "legendFormat": "CLARIFY" }],
+      "fieldConfig": { "defaults": { "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 5 }] } } }
+    },
+    {
+      "title": "当前活跃 Agent",
+      "type": "stat",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 1 },
+      "targets": [{ "expr": "agent_active_count", "legendFormat": "活跃" }],
+      "fieldConfig": { "defaults": { "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 5 }, { "color": "red", "value": 10 }] } } }
+    },
+    {
+      "title": "⏱️ 性能分析",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 },
+      "collapsed": false
+    },
+    {
+      "title": "Agent 执行耗时 (P50/P95/P99)",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 6 },
+      "targets": [
+        { "expr": "agent_duration_seconds{quantile=\"0.5\"}", "legendFormat": "P50" },
+        { "expr": "agent_duration_seconds{quantile=\"0.95\"}", "legendFormat": "P95" },
+        { "expr": "agent_duration_seconds{quantile=\"0.99\"}", "legendFormat": "P99" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+    {
+      "title": "Planner 执行耗时 (P50/P95/P99)",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 6 },
+      "targets": [
+        { "expr": "planner_duration_seconds{quantile=\"0.5\"}", "legendFormat": "P50" },
+        { "expr": "planner_duration_seconds{quantile=\"0.95\"}", "legendFormat": "P95" },
+        { "expr": "planner_duration_seconds{quantile=\"0.99\"}", "legendFormat": "P99" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+    {
+      "title": "Worker 执行耗时 (P50/P95/P99)",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 6 },
+      "targets": [
+        { "expr": "worker_duration_seconds{quantile=\"0.5\"}", "legendFormat": "P50" },
+        { "expr": "worker_duration_seconds{quantile=\"0.95\"}", "legendFormat": "P95" },
+        { "expr": "worker_duration_seconds{quantile=\"0.99\"}", "legendFormat": "P99" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+    {
+      "title": "Orchestrator 单轮耗时 (P50/P95/P99)",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 14 },
+      "targets": [
+        { "expr": "orchestrator_round_duration_seconds{quantile=\"0.5\"}", "legendFormat": "P50" },
+        { "expr": "orchestrator_round_duration_seconds{quantile=\"0.95\"}", "legendFormat": "P95" },
+        { "expr": "orchestrator_round_duration_seconds{quantile=\"0.99\"}", "legendFormat": "P99" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+    {
+      "title": "工具失败率",
+      "type": "gauge",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 14 },
+      "targets": [
+        { "expr": "sum(tool_error_total) / sum(tool_call_total) * 100", "legendFormat": "失败率" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 10 }, { "color": "red", "value": 20 }] }
+        }
+      }
+    },
+    {
+      "title": "🤖 Agent 调用分析",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 22 },
+      "collapsed": false
+    },
+    {
+      "title": "各 Agent 调用次数",
+      "type": "barchart",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 23 },
+      "targets": [
+        { "expr": "sum by (agentName) (agent_invoke_total)", "legendFormat": "{{agentName}}" }
+      ]
+    },
+    {
+      "title": "调用趋势（Agent / 工具 / CLARIFY）",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 23 },
+      "targets": [
+        { "expr": "rate(agent_invoke_total[5m])", "legendFormat": "Agent 调用速率" },
+        { "expr": "rate(tool_call_total[5m])", "legendFormat": "工具调用速率" },
+        { "expr": "rate(agent_clarify_total[5m])", "legendFormat": "CLARIFY 速率" },
+        { "expr": "rate(agent_retry_total[5m])", "legendFormat": "重试速率" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "reqps" } }
+    },
+    {
+      "title": "⚠️ 异常检测",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 31 },
+      "collapsed": false
+    },
+    {
+      "title": "错误事件趋势（重试 / CLARIFY / 工具错误）",
+      "type": "timeseries",
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 32 },
+      "targets": [
+        { "expr": "rate(agent_retry_total[5m])", "legendFormat": "重试" },
+        { "expr": "rate(agent_clarify_total[5m])", "legendFormat": "CLARIFY" },
+        { "expr": "rate(tool_error_total[5m])", "legendFormat": "工具错误" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "reqps" } }
+    },
+    {
+      "title": "📜 结构化日志 (Elasticsearch)",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 40 },
+      "collapsed": false
+    },
+    {
+      "title": "最近 Agent 日志",
+      "type": "logs",
+      "datasource": "Elasticsearch",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 41 },
+      "targets": [
+        {
+          "query": "eventType: *",
+          "timeField": "@timestamp"
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true,
+        "enableLogDetails": true
+      }
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 38,
+  "tags": ["agent", "monitoring"],
+  "templating": { "list": [] },
+  "time": { "from": "now-1h", "to": "now" },
+  "title": "Agentic-Travel-Hub 监控看板",
+  "uid": "agent-travel-hub",
+  "version": 1
+}

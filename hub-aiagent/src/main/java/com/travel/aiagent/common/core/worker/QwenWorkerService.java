@@ -1,9 +1,11 @@
 package com.travel.aiagent.common.core.worker;
 
 import com.alibaba.fastjson2.JSON;
+import com.travel.aiagent.common.constant.AgentEventType;
 import com.travel.aiagent.common.domain.PlanDetailVO;
 import com.travel.aiagent.common.domain.WorkDetailVO;
 import com.travel.aiagent.common.domain.prompt.SystemPrompt;
+import com.travel.aiagent.common.utils.AgentMDC;
 import com.travel.aiagent.common.utils.SpringAIDocumentUtils;
 import com.travel.hubtools.tool.common.IAgentTool;
 import jakarta.annotation.Resource;
@@ -68,7 +70,10 @@ public class QwenWorkerService {
      * RAG 增强模式：知识库检索 → 注入 Tool → 真实调用
      */
     public WorkDetailVO doWorkWithRag(PlanDetailVO planDetailVO) {
+        AgentMDC.setEventType(AgentEventType.WORKER_INPUT.getType());
+        AgentMDC.setPlannerInput(planDetailVO.getPlanDetail());
         log.info("[Worker] doWorkWithRag启动 | plan={}", JSON.toJSONString(planDetailVO));
+
         Query query = new Query(planDetailVO.getPlanDetail());
         List<Document> toolDocumentList = travelDocumentRetriever.retrieve(query);
         List<String> toolBeanList = SpringAIDocumentUtils.getToolBeanList(toolDocumentList, SpringAIDocumentUtils.TOOL_NAME_PATTERN);
@@ -81,7 +86,10 @@ public class QwenWorkerService {
                 log.warn("[Worker] 知识库检索到工具但未注册 | toolName={}", toolName);
             }
         }
-        log.info("[Worker] RAG检索完成 | matchedTools={}", selectedCallbacks.size());
+
+        AgentMDC.setToolNames(String.join(",", toolBeanList));
+        AgentMDC.setEventType(AgentEventType.TOOL_DETAIL.getType());
+        log.info("[Worker] RAG检索完成 | matchedTools={} | toolNames={}", selectedCallbacks.size(), toolBeanList);
 
         String workerPrompt = String.format("""
                         你是负责执行工具调用的 Worker 节点。
@@ -110,7 +118,12 @@ public class QwenWorkerService {
                 .chatResponse();
         String finalAnswer = chatResponse.getResult().getOutput().getText();
         WorkDetailVO workDetailVO = new WorkDetailVO(true, finalAnswer);
-        log.info("[Worker] RAG任务执行完成 | success={}", JSON.toJSON(workDetailVO));
+
+        AgentMDC.setEventType(AgentEventType.WORKER_OUTPUT.getType());
+        AgentMDC.setWorkerConclusion(finalAnswer);
+        log.info("[Worker] RAG任务执行完成 | success={} | conclusion={}", workDetailVO.isSuccess(), finalAnswer);
+
+        AgentMDC.clearContentContext();
         return workDetailVO;
     }
 
@@ -122,6 +135,8 @@ public class QwenWorkerService {
 
     public WorkDetailVO doWorkWithRagParallel(PlanDetailVO planDetailVO) {
         // 通过 RAG 找到 ToolCallBackSet
+        AgentMDC.setEventType(AgentEventType.WORKER_INPUT.getType());
+        AgentMDC.setPlannerInput(planDetailVO.getPlanDetail());
         log.info("[Worker] doWorkWithRagParallel启动 | plan={}", JSON.toJSONString(planDetailVO));
         if (planDetailVO.getPlanDetail() == null) {
             return new WorkDetailVO(false, "计划为空，无法执行计划，请重新规划当前步骤的计划吧");
@@ -139,6 +154,10 @@ public class QwenWorkerService {
                 log.warn("[Worker] 知识库检索到工具但未注册 | toolName={}", toolName);
             }
         }
+
+        AgentMDC.setToolNames(String.join(",", toolBeanList));
+        AgentMDC.setEventType(AgentEventType.TOOL_DETAIL.getType());
+        log.info("[Worker] RAG检索完成 | matchedTools={} | toolNames={}", selectedCallbacks.size(), toolBeanList);
 
         // 新增chatOption，关闭工具自动执行 https://springdoc.cn/spring-ai/api/tools.html#_%E7%94%A8%E6%88%B7%E6%8E%A7%E5%88%B6%E7%9A%84%E5%B7%A5%E5%85%B7%E6%89%A7%E8%A1%8C
         ChatOptions chatOptions = ToolCallingChatOptions.builder()
@@ -170,7 +189,10 @@ public class QwenWorkerService {
                             return new ToolResponseMessage.ToolResponse(toolCall.id(), toolCall.name(), "工具未注册");
                         }
                         try {
+                            log.info("[Worker-并发] 开始调用工具 | name={} | args={}", toolCall.name(), toolCall.arguments());
                             String result = cb.call(toolCall.arguments());
+                            AgentMDC.setEventType(AgentEventType.TOOL_FINISH.getType());
+                            log.info("[Worker-并发] 工具调用完成 | name={} | resultLength={}", toolCall.name(), result != null ? result.length() : 0);
                             return new ToolResponseMessage.ToolResponse(toolCall.id(), toolCall.name(), result);
                         } catch (Exception e) {
                             log.error("[Worker-并发] 工具执行异常 | name={}", toolCall.name(), e);
@@ -215,11 +237,22 @@ public class QwenWorkerService {
 
             String finalAnswer = finalResponse.getResult().getOutput().getText();
             WorkDetailVO workDetailVO = new WorkDetailVO(true, finalAnswer);
-            log.info("[Worker] RAG任务执行完成 | success={}", JSON.toJSON(workDetailVO));
+
+            AgentMDC.setEventType(AgentEventType.WORKER_OUTPUT.getType());
+            AgentMDC.setWorkerConclusion(finalAnswer);
+            log.info("[Worker] RAG任务执行完成 | success={} | conclusion={}", workDetailVO.isSuccess(), finalAnswer);
+
+            AgentMDC.clearContentContext();
             return workDetailVO;
         }
 
-        return new WorkDetailVO(true, assistantMessage.getText());
+        // 无工具调用时直接返回 LLM 回复
+        String directAnswer = assistantMessage.getText();
+        AgentMDC.setEventType(AgentEventType.WORKER_OUTPUT.getType());
+        AgentMDC.setWorkerConclusion(directAnswer);
+        log.info("[Worker] 无工具调用，直接返回LLM回复 | conclusion={}", directAnswer);
+        AgentMDC.clearContentContext();
+        return new WorkDetailVO(true, directAnswer);
     }
 
 

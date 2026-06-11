@@ -20,6 +20,10 @@ logs/
 ### Claude Code ###
 .claude/
 
+### 本地笔记（只保留 monitoring-design.md） ###
+notes/*
+!notes/monitoring-design.md
+
 ### STS ###
 .apt_generated
 .classpath

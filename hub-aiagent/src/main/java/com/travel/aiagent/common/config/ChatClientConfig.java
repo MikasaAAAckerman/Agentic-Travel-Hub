@@ -30,7 +30,7 @@ public class ChatClientConfig {
         * https://springdoc.cn/spring-ai/api/chatclient.html
         * 官网写法，通过yml控温，但是考虑到可能会出现多个qwenClient，所以手动builder，可以实现不动yml的情况下造出多个温度的client
         return ChatClient.create(dashScopeChatModel); */
-        log.info("[Config] 初始化 Qwen ChatClient | temperature=0.0 (理性模式)");
+        log.info("[Config] 初始化 Qwen ChatClient ");
 
         return ChatClient.builder(dashScopeChatModel)
                 .defaultOptions(
@@ -49,7 +49,7 @@ public class ChatClientConfig {
         * https://springdoc.cn/spring-ai/api/chatclient.html
         * 官网写法，通过yml控温，但是考虑到可能会出现多个Client，所以手动builder，可以实现不动yml的情况下造出多个温度的client
         return ChatClient.create(dashScopeChatModel); */
-        log.info("[Config] 初始化 DeepSeek ChatClient | temperature=0.0 (理性模式)");
+        log.info("[Config] 初始化 DeepSeek ChatClient ");
         return ChatClient.builder(deepSeekChatModel)
                 .defaultOptions(
                         OpenAiChatOptions.builder()
@@ -67,7 +67,7 @@ public class ChatClientConfig {
         * https://springdoc.cn/spring-ai/api/chatclient.html
         * 官网写法，通过yml控温，但是考虑到可能会出现多个Client，所以手动builder，可以实现不动yml的情况下造出多个温度的client
         return ChatClient.create(dashScopeChatModel); */
-        log.info("[Config] 初始化 DeepSeek Planner Client | temperature=0.0 (规划专用)");
+        log.info("[Config] 初始化 DeepSeek Planner Client ");
         return ChatClient.builder(openAiChatModel)
                 .defaultOptions(
                         OpenAiChatOptions.builder()

@@ -1,0 +1,72 @@
+# Prometheus 告警规则
+# 针对 Agentic-Travel-Hub 的 Agent 监控
+
+groups:
+  - name: agent_alerts
+    rules:
+
+      # ==================== 循环调用告警 ====================
+      # 同一 Agent 5 分钟内重试超过 3 次
+      - alert: AgentRetryStorm
+        expr: sum by (agentName) (increase(agent_retry_total[5m])) > 3
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Agent 循环调用告警"
+          description: "Agent {{ $labels.agentName }} 在 5 分钟内重试了 {{ $value }} 次，可能存在循环调用问题"
+
+      # ==================== CLARIFY 泛滥告警 ====================
+      # 5 分钟内 CLARIFY 超过 5 次
+      - alert: ClarifyFlood
+        expr: sum(increase(agent_clarify_total[5m])) > 5
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "CLARIFY 泛滥告警"
+          description: "5 分钟内 CLARIFY 事件发生了 {{ $value }} 次，SubAgent 可能缺少上下文信息"
+
+      # ==================== 工具失败率告警 ====================
+      # 工具失败率超过 20%
+      - alert: ToolFailureRateHigh
+        expr: sum(tool_error_total) / sum(tool_call_total) > 0.2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "工具失败率过高"
+          description: "工具调用失败率为 {{ $value | humanizePercentage }}，超过 20% 阈值"
+
+      # ==================== Agent 执行超时告警 ====================
+      # P95 耗时超过 60 秒
+      - alert: AgentSlowP95
+        expr: histogram_quantile(0.95, rate(agent_duration_seconds_bucket[5m])) > 60
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Agent 执行过慢"
+          description: "Agent P95 耗时为 {{ $value }}s，超过 60s 阈值"
+
+      # ==================== 工具执行超时告警 ====================
+      # 工具 P95 耗时超过 30 秒
+      - alert: ToolSlowP95
+        expr: histogram_quantile(0.95, rate(worker_duration_seconds_bucket[5m])) > 30
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Worker 工具执行过慢"
+          description: "Worker P95 耗时为 {{ $value }}s，超过 30s 阈值"
+
+      # ==================== 应用实例宕机告警 ====================
+      # 目标不可达
+      - alert: AgentAppDown
+        expr: up{job="agentic-travel-hub"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "应用实例宕机"
+          description: "Agentic-Travel-Hub 实例不可达，请检查服务状态"
