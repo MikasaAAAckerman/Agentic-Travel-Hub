@@ -15,10 +15,19 @@ import org.springframework.stereotype.Component;
 /**
  * Agent MDC 自动织入切面
  *
- * 统一拦截所有 Agent 的 execute 方法，自动管理 MDC 上下文：
- * - traceId    : 请求级别追踪ID，自动传递
- * - agentName  : 从类名自动提取（如 OrchestratorAgent → OrchestratorAgent）
- * - eventType  : 入口标记 AGENT_INVOKE，出口标记 AGENT_FINISH，异常标记 ERROR
+ * 统一拦截所有 Agent 的 execute 方法，自动管理两层监控：
+ *
+ * ═══ Layer 1：结构化日志（ELK）═══
+ * 目的：在 Kibana 中按字段搜索 LLM 的输入与输出，排查问题
+ * 实现：通过 SLF4J MDC 注入 traceId、agentName、eventType 等字段，
+ *       配合 logback JSON 编码器 → Logstash 解析 → ES 存储 → Kibana 查询
+ * 效果：能在 Kibana 里按 agentName 过滤、按 eventType 搜索、查看 plannerInput/workerConclusion
+ *
+ * ═══ Layer 2：指标监控（Prometheus + Grafana）═══
+ * 目的：实时监控服务运行状态（调用次数、耗时、失败率）
+ * 实现：通过 AgentMetrics 记录 Counter/Timer/Gauge，
+ *       配合 Actuator 暴露 /actuator/prometheus → Prometheus 抓取 → Grafana 渲染
+ * 效果：Grafana 仪表盘展示 P50/P95/P99 耗时、工具失败率、活跃 Agent 数
  *
  * 业务语义事件（CLARIFY、TASK_DISPATCH、RETRY）由各 Agent 内部手动埋点
  */
@@ -27,9 +36,11 @@ import org.springframework.stereotype.Component;
 @Component
 public class AgentMDCAspect {
 
+    // Layer 2：Prometheus 指标（Counter/Timer/Gauge）
     @Resource
     private AgentMetrics agentMetrics;
 
+    // Layer 3：Jaeger 链路追踪（Span）
     @Resource
     private AgentTracing agentTracing;
 
@@ -44,15 +55,18 @@ public class AgentMDCAspect {
         // 自动提取 Agent 名称
         String agentName = pjp.getTarget().getClass().getSimpleName();
 
-        // 设置 MDC 上下文
+        // ── Layer 1：ELK 结构化日志 ──
+        // 往 MDC 里塞字段，logback JSON 编码器会自动附带到每条日志
+        // 效果：Kibana 里能按 agentName、eventType 过滤搜索
         AgentMDC.setTraceIdIfAbsent();
         AgentMDC.setAgentName(agentName);
         AgentMDC.setEventType(AgentEventType.AGENT_INVOKE.getType());
 
-        // 创建 Tracing Span
+        // ── Layer 3：Jaeger 链路追踪 ──
         Span span = agentTracing.createAgentSpan(agentName);
 
-        // 记录指标：Agent 开始调用
+        // ── Layer 2：Prometheus 指标 ──
+        // Counter +1（调用次数），Gauge +1（活跃 Agent 数）
         agentMetrics.recordAgentInvoke(agentName);
 
         log.info("[{}] 开始执行 | args={}", agentName, maskArgs(pjp.getArgs()));
@@ -62,29 +76,36 @@ public class AgentMDCAspect {
             Object result = pjp.proceed();
 
             long elapsed = System.currentTimeMillis() - startTime;
+
+            // ── Layer 1：ELK ── 标记事件类型为完成
             AgentMDC.setEventType(AgentEventType.AGENT_FINISH.getType());
             log.info("[{}] 执行完成 | elapsed={}ms", agentName, elapsed);
 
-            // 记录指标：Agent 完成
+            // ── Layer 2：Prometheus ── Timer 记录耗时，Gauge -1（活跃数减少）
             agentMetrics.recordAgentFinish(agentName, elapsed);
-            // 结束 Span
+
+            // ── Layer 3：Jaeger ── 正常结束 Span
             agentTracing.endSpan(span, true);
 
             return result;
 
         } catch (Throwable t) {
             long elapsed = System.currentTimeMillis() - startTime;
+
+            // ── Layer 1：ELK ── 标记事件类型为异常，Kibana 里能搜 eventType:ERROR
             AgentMDC.setEventType(AgentEventType.ERROR.getType());
             log.error("[{}] 执行异常 | elapsed={}ms | error={}", agentName, elapsed, t.getMessage());
 
-            // 记录指标：Agent 异常完成（也记录耗时）
+            // ── Layer 2：Prometheus ── 异常也记录耗时（Timer），Gauge -1
             agentMetrics.recordAgentFinish(agentName, elapsed);
-            // 结束 Span（带异常）
+
+            // ── Layer 3：Jaeger ── 标记 Span 为异常状态（红色高亮）
             agentTracing.endSpanWithError(span, t);
 
             throw t;
 
         } finally {
+            // ── Layer 1：ELK ── 清理 MDC，防止线程池复用导致日志字段污染
             AgentMDC.clearAgentContext();
         }
     }
@@ -96,28 +117,34 @@ public class AgentMDCAspect {
     public Object aroundPlanner(ProceedingJoinPoint pjp) throws Throwable {
         String methodName = pjp.getSignature().getName();
 
-        // 创建 Tracing Span
+        // ── Layer 3：Jaeger ── 创建 Planner Span
         Span span = agentTracing.createPlannerSpan(methodName);
 
         long startTime = System.currentTimeMillis();
         try {
             Object result = pjp.proceed();
             long elapsed = System.currentTimeMillis() - startTime;
+
+            // ── Layer 1：ELK ── Planner 完成日志（plannerInput/Output 由 DeepSeekPlannerService 内部手动埋点）
             log.info("[Planner] {} 完成 | elapsed={}ms", methodName, elapsed);
 
-            // 记录指标：Planner 调用耗时
+            // ── Layer 2：Prometheus ── Timer 记录 Planner 耗时
             agentMetrics.recordPlannerCall(elapsed);
-            // 结束 Span
+
+            // ── Layer 3：Jaeger ── 正常结束 Span
             agentTracing.endSpan(span, true);
 
             return result;
         } catch (Throwable t) {
             long elapsed = System.currentTimeMillis() - startTime;
+
+            // ── Layer 1：ELK ── 异常日志
             log.error("[Planner] {} 异常 | elapsed={}ms | error={}", methodName, elapsed, t.getMessage());
 
-            // 记录指标：Planner 异常也记录耗时
+            // ── Layer 2：Prometheus ── 异常也记录耗时
             agentMetrics.recordPlannerCall(elapsed);
-            // 结束 Span（带异常）
+
+            // ── Layer 3：Jaeger ── 标记 Span 异常
             agentTracing.endSpanWithError(span, t);
 
             throw t;
@@ -130,32 +157,40 @@ public class AgentMDCAspect {
     @Around("execution(* com.travel.aiagent.common.core.worker.QwenWorkerService.*(..))")
     public Object aroundWorker(ProceedingJoinPoint pjp) throws Throwable {
         String methodName = pjp.getSignature().getName();
+
+        // ── Layer 1：ELK ── 标记事件类型为工具调用
         AgentMDC.setEventType(AgentEventType.TOOL_CALL.getType());
 
-        // 创建 Tracing Span
+        // ── Layer 3：Jaeger ── 创建 Worker Span
         Span span = agentTracing.createWorkerSpan(methodName);
 
         long startTime = System.currentTimeMillis();
         try {
             Object result = pjp.proceed();
             long elapsed = System.currentTimeMillis() - startTime;
+
+            // ── Layer 1：ELK ── 标记工具完成（toolNames/workerConclusion 由 QwenWorkerService 内部手动埋点）
             AgentMDC.setEventType(AgentEventType.TOOL_FINISH.getType());
             log.info("[Worker] {} 完成 | elapsed={}ms", methodName, elapsed);
 
-            // 记录指标：工具调用成功
+            // ── Layer 2：Prometheus ── Counter +1，Timer 记录耗时
             agentMetrics.recordToolCall(elapsed, true);
-            // 结束 Span
+
+            // ── Layer 3：Jaeger ── 正常结束 Span
             agentTracing.endSpan(span, true);
 
             return result;
         } catch (Throwable t) {
             long elapsed = System.currentTimeMillis() - startTime;
+
+            // ── Layer 1：ELK ── 标记工具异常
             AgentMDC.setEventType(AgentEventType.TOOL_ERROR.getType());
             log.error("[Worker] {} 异常 | elapsed={}ms | error={}", methodName, elapsed, t.getMessage());
 
-            // 记录指标：工具调用失败
+            // ── Layer 2：Prometheus ── 工具失败 Counter +1，Timer 也记录耗时
             agentMetrics.recordToolCall(elapsed, false);
-            // 结束 Span（带异常）
+
+            // ── Layer 3：Jaeger ── 标记 Span 异常
             agentTracing.endSpanWithError(span, t);
 
             throw t;
@@ -164,10 +199,10 @@ public class AgentMDCAspect {
 
     /**
      * 拦截 Controller 入口，初始化 traceId
+     * Layer 1：ELK ── 在请求入口生成 traceId，贯穿整个请求链路的日志
      */
     @Around("execution(* com.travel.starter.controller..*(..))")
     public Object aroundController(ProceedingJoinPoint pjp) throws Throwable {
-        // 在请求入口初始化 traceId
         AgentMDC.setTraceIdIfAbsent();
         return pjp.proceed();
     }

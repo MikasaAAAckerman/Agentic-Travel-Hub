@@ -10,10 +10,10 @@ import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Agent 分布式追踪组件
- *
+ * <p>
  * 基于 Micrometer Tracing（桥接 OpenTelemetry），
  * 在关键调用点创建 Span，形成完整的调用链路。
- *
+ * <p>
  * Span 层级示例：
  * [Controller]
  *   └── [OrchestratorAgent]

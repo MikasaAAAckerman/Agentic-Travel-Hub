@@ -23,7 +23,7 @@
         </rollingPolicy>
         <encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
             <!-- JSON 结构化格式，方便 ELK/Loki 采集 -->
-            <pattern>{"timestamp":"%d{yyyy-MM-dd HH:mm:ss.SSS}","level":"%level","traceId":"%X{traceId:-}","agentName":"%X{agentName:-}","round":"%X{round:-}","isRetry":"%X{isRetry:-}","eventType":"%X{eventType:-}","logger":"%logger{36}","thread":"%thread","msg":"%msg"}%n</pattern>
+            <pattern>{"timestamp":"%d{yyyy-MM-dd HH:mm:ss.SSS}","level":"%level","traceId":"%X{traceId:-}","agentName":"%X{agentName:-}","subAgentName":"%X{subAgentName:-}","round":"%X{round:-}","isRetry":"%X{isRetry:-}","eventType":"%X{eventType:-}","plannerAction":"%X{plannerAction:-}","plannerInput":"%X{plannerInput:-}","plannerOutput":"%X{plannerOutput:-}","workerConclusion":"%X{workerConclusion:-}","toolNames":"%X{toolNames:-}","logger":"%logger{36}","thread":"%thread","msg":"%msg"}%n</pattern>
         </encoder>
     </appender>
 

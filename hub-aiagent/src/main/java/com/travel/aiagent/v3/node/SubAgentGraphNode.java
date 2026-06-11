@@ -2,6 +2,7 @@ package com.travel.aiagent.v3.node;
 
 import com.alibaba.cloud.ai.graph.action.AsyncNodeAction;
 import com.alibaba.cloud.ai.graph.action.NodeAction;
+import com.travel.aiagent.common.constant.AgentEventType;
 import com.travel.aiagent.common.constant.GraphStateKey;
 import com.travel.aiagent.common.constant.PlanActionEnum;
 import com.travel.aiagent.common.core.planner.DeepSeekPlannerService;
@@ -9,6 +10,7 @@ import com.travel.aiagent.common.core.worker.QwenWorkerService;
 import com.travel.aiagent.common.domain.PlanDetailVO;
 import com.travel.aiagent.common.domain.WorkDetailVO;
 import com.travel.aiagent.common.memory.ShortTermMemory;
+import com.travel.aiagent.common.utils.AgentMDC;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -51,6 +53,9 @@ public class SubAgentGraphNode {
             Integer loopTimes = state.value(GraphStateKey.LOOP_TIMES.getKey(), 0);
             String subAgentName = state.value(GraphStateKey.SUB_AGENT_NAME.getKey(), "");
 
+            AgentMDC.setSubAgentName(subAgentName);
+            AgentMDC.setRound(loopTimes);
+            AgentMDC.setEventType(AgentEventType.ORCHESTRATOR_ROUND.getType());
             log.info("[V3-Sub] {} planner 节点 | 第{}轮", subAgentName, loopTimes);
 
             String historyWorkDetail = state.value(GraphStateKey.WORKER_CONCLUSION.getKey(), "");
@@ -72,7 +77,11 @@ public class SubAgentGraphNode {
             resultMap.put(GraphStateKey.ORCHESTRATOR_AGENT_CONCLUSION.getKey(), plan.getConclusion());
             resultMap.put(GraphStateKey.LOOP_TIMES.getKey(), loopTimes + 1);
 
-            log.info("[V3-Sub] {} planner → action={}", subAgentName, plan.getAction());
+            AgentMDC.setEventType(AgentEventType.PLANNER_OUTPUT.getType());
+            AgentMDC.setPlannerAction(plan.getAction());
+            log.info("[V3-Sub] {} planner → action={} | planDetail={}", subAgentName, plan.getAction(), plan.getPlanDetail());
+
+            AgentMDC.clearContentContext();
             return resultMap;
         };
         return AsyncNodeAction.node_async(action);
@@ -85,7 +94,10 @@ public class SubAgentGraphNode {
         NodeAction action = state -> {
             String planDetail = state.value(GraphStateKey.SUB_AGENT_PLAN_DETAIL.getKey(), "");
             String subAgentName = state.value(GraphStateKey.SUB_AGENT_NAME.getKey(), "");
-            log.info("[V3-Sub] {} 进入 worker 节点", subAgentName);
+
+            AgentMDC.setSubAgentName(subAgentName);
+            AgentMDC.setEventType(AgentEventType.WORKER_INPUT.getType());
+            log.info("[V3-Sub] {} 进入 worker 节点 | plan={}", subAgentName, planDetail);
 
             PlanDetailVO planVO = new PlanDetailVO();
             planVO.setPlanDetail(planDetail);
@@ -95,8 +107,14 @@ public class SubAgentGraphNode {
             Map<String, Object> resultMap = new HashMap<>();
 
             String workerMemory = state.value(GraphStateKey.WORKER_CONCLUSION.getKey(), "");
-            resultMap.put(GraphStateKey.WORKER_CONCLUSION.getKey(), workerMemory + workerDetail.getConclusion());
+            String conclusion = workerDetail.getConclusion();
+            resultMap.put(GraphStateKey.WORKER_CONCLUSION.getKey(), workerMemory + conclusion);
 
+            AgentMDC.setEventType(AgentEventType.WORKER_OUTPUT.getType());
+            AgentMDC.setWorkerConclusion(conclusion);
+            log.info("[V3-Sub] {} worker 完成 | success={} | conclusion={}", subAgentName, workerDetail.isSuccess(), conclusion);
+
+            AgentMDC.clearContentContext();
             return resultMap;
         };
         return AsyncNodeAction.node_async(action);

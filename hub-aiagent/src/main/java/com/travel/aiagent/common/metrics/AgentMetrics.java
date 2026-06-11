@@ -9,54 +9,65 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Agent 指标组件
+ * Agent 指标组件（Layer 2：Prometheus + Grafana）
  *
- * 定义并记录所有 Agent 相关的 Prometheus 指标：
- * - Counter: 累计计数（调用次数、错误次数）
- * - Timer: 耗时统计（Agent/Planner/Worker 执行时间）
- * - Gauge: 瞬时值（当前活跃 Agent 数）
+ * 目的：实时监控服务运行状态，通过 Grafana 仪表盘可视化
+ * 数据流：AgentMetrics → Micrometer → Actuator /actuator/prometheus → Prometheus → Grafana
+ *
+ * 三种指标类型：
+ * - Counter: 累计计数（调用次数、错误次数）→ Grafana Stat 面板
+ * - Timer:   耗时统计（P50/P95/P99 分位数）→ Grafana TimeSeries 面板
+ * - Gauge:   瞬时值（当前活跃 Agent 数）   → Grafana Gauge 面板
+ *
+ * 配合 AgentMDCAspect（AOP 切面）自动记录，业务代码无需手动调用
  */
 @Component
 @Getter
 public class AgentMetrics {
 
-    // ==================== Counter 指标 ====================
+    // ═══════════════════════════════════════════════════════════
+    // Counter 指标（只增不减，Grafana Stat 面板展示累计值）
+    // ═══════════════════════════════════════════════════════════
 
-    /** Agent 调用总次数 */
+    /** Agent 调用总次数 → Grafana "Agent 调用总次数" 面板 */
     private final Counter agentInvokeTotal;
 
-    /** Agent 重试总次数 */
-    private final Counter agentRetryTotal;
+    /** Agent 重试总次数 → Grafana "重试次数" 面板，突增说明有问题 */
+        private final Counter agentRetryTotal;
 
-    /** 工具调用总次数 */
+    /** 工具调用总次数 → Grafana "工具调用总数" 面板 */
     private final Counter toolCallTotal;
 
-    /** 工具调用失败次数 */
+    /** 工具调用失败次数 → Grafana "工具错误数" 面板，配合 toolCallTotal 算失败率 */
     private final Counter toolErrorTotal;
 
-    /** CLARIFY 事件次数 */
+    /** CLARIFY 事件次数 → Grafana "CLARIFY 次数" 面板，说明 Planner 需要用户补充信息 */
     private final Counter clarifyTotal;
 
-    // ==================== Timer 指标 ====================
+    // ═══════════════════════════════════════════════════════════
+    // Timer 指标（统计耗时分布，Grafana TimeSeries 面板展示 P50/P95/P99）
+    // ═══════════════════════════════════════════════════════════
 
-    /** Agent 执行耗时 */
+    /** Agent 执行耗时 → Grafana "Agent 执行耗时 (P50/P95/P99)" 面板 */
     private final Timer agentDuration;
 
-    /** Planner 执行耗时 */
+    /** Planner 调用 DeepSeek 的耗时 → Grafana "Planner 执行耗时" 面板 */
     private final Timer plannerDuration;
 
-    /** Worker 执行耗时 */
+    /** Worker 调用工具的耗时 → Grafana "Worker 执行耗时" 面板 */
     private final Timer workerDuration;
 
-    /** Orchestrator 单轮耗时 */
+    /** Orchestrator 单轮耗时 → Grafana "Orchestrator 单轮耗时" 面板 */
     private final Timer orchestratorRoundDuration;
 
-    // ==================== Gauge 指标 ====================
+    // ═══════════════════════════════════════════════════════════
+    // Gauge 指标（瞬时值，可增可减，Grafana Gauge 面板展示当前状态）
+    // ═══════════════════════════════════════════════════════════
 
-    /** 当前活跃 Agent 数量 */
+    /** 当前活跃 Agent 数量 → Grafana "当前活跃 Agent" 面板，0 表示空闲 */
     private final AtomicInteger activeAgentCount;
 
-    /** 当前 Orchestrator 轮次 */
+    /** 当前 Orchestrator 轮次 → Grafana 面板，追踪多轮编排进度 */
     private final AtomicInteger currentOrchestratorRound;
 
     // ==================== 构造函数 ====================

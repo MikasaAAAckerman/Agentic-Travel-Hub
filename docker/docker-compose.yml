@@ -1,24 +1,25 @@
 version: '3.8'
 
 # ============================================================
-# Agentic-Travel-Hub 可观测性栈
-# 一键启动：Grafana + Prometheus + Jaeger
+# Agentic-Travel-Hub 可观测性栈（全家桶）
+# 一键启动：Prometheus + Grafana + Jaeger + ELK
 # ============================================================
 #
 # 启动命令：
 #   cd docker && docker-compose up -d
 #
 # 访问地址：
-#   Grafana:    http://localhost:3000  (admin/admin)
-#   Prometheus: http://localhost:9090
-#   Jaeger:     http://localhost:16686
+#   Grafana:        http://localhost:3000  (admin/admin)
+#   Prometheus:     http://localhost:9090
+#   Jaeger:         http://localhost:16686
+#   Elasticsearch:  http://localhost:9200
+#   Kibana:         http://localhost:5601
 #
 # ============================================================
 
 services:
 
   # ==================== Prometheus ====================
-  # 指标采集与存储
   prometheus:
     image: prom/prometheus:latest
     container_name: prometheus
@@ -26,6 +27,7 @@ services:
       - "9090:9090"
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./prometheus/rules:/etc/prometheus/rules
       - prometheus_data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
@@ -37,7 +39,6 @@ services:
       - monitoring
 
   # ==================== Grafana ====================
-  # 可视化面板
   grafana:
     image: grafana/grafana:latest
     container_name: grafana
@@ -59,15 +60,64 @@ services:
       - monitoring
 
   # ==================== Jaeger ====================
-  # 分布式追踪
   jaeger:
     image: jaegertracing/all-in-one:latest
     container_name: jaeger
     ports:
-      - "16686:16686"   # Jaeger UI
-      - "4318:4318"     # OTLP HTTP (接收 traces)
+      - "16686:16686"
+      - "14318:4318"
     environment:
       - COLLECTOR_OTLP_ENABLED=true
+    restart: unless-stopped
+    networks:
+      - monitoring
+
+  # ==================== Elasticsearch ====================
+  elasticsearch:
+    image: elasticsearch:8.11.0
+    container_name: elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    restart: unless-stopped
+    networks:
+      - monitoring
+
+  # ==================== Logstash ====================
+  logstash:
+    image: logstash:8.11.0
+    container_name: logstash
+    ports:
+      - "5044:5044"
+      - "19600:9600"
+    volumes:
+      - ./logstash/pipeline:/usr/share/logstash/pipeline
+      # 挂载宿主机的 Java 应用日志目录到 Logstash 容器
+      - ../logs:/usr/share/logstash/app-logs:ro
+    environment:
+      - LS_JAVA_OPTS=-Xms256m -Xmx256m
+    depends_on:
+      - elasticsearch
+    restart: unless-stopped
+    networks:
+      - monitoring
+
+  # ==================== Kibana ====================
+  kibana:
+    image: kibana:8.11.0
+    container_name: kibana
+    ports:
+      - "5601:5601"
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    depends_on:
+      - elasticsearch
     restart: unless-stopped
     networks:
       - monitoring
@@ -75,6 +125,7 @@ services:
 volumes:
   prometheus_data:
   grafana_data:
+  elasticsearch_data:
 
 networks:
   monitoring:

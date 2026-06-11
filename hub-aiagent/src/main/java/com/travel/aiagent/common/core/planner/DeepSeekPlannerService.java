@@ -1,8 +1,10 @@
 package com.travel.aiagent.common.core.planner;
 
 import com.alibaba.fastjson.JSON;
+import com.travel.aiagent.common.constant.AgentEventType;
 import com.travel.aiagent.common.domain.PlanDetailVO;
 import com.travel.aiagent.common.domain.prompt.SystemPrompt;
+import com.travel.aiagent.common.utils.AgentMDC;
 import com.travel.common.constant.BizException;
 import com.travel.common.constant.ServiceResponseTypeEnum;
 import jakarta.annotation.Resource;
@@ -31,12 +33,22 @@ public class DeepSeekPlannerService {
                 请根据上述需求进行继续规划。
                 """
                 .formatted(userInput, historyContext);
+
+        AgentMDC.setEventType(AgentEventType.PLANNER_INPUT.getType());
+        AgentMDC.setPlannerInput(userMessage);
         log.info("[Planner] DeepSeek 开始任务规划 | userMessage = {}", JSON.toJSONString(userMessage));
+
         PlanDetailVO result = deepseekPlannerClient.prompt()
                 .system(SystemPrompt.TRAVEL_PLANNER_SYSTEM_PROMPT)
                 .user(userMessage)
                 .call().entity(PlanDetailVO.class);
+
+        AgentMDC.setEventType(AgentEventType.PLANNER_OUTPUT.getType());
+        AgentMDC.setPlannerAction(result.getAction());
+        AgentMDC.setPlannerOutput(JSON.toJSONString(result));
         log.info("[Planner] 任务规划完成 | result = {} ", JSON.toJSONString(result));
+
+        AgentMDC.clearContentContext();
         return result;
     }
 
@@ -50,12 +62,23 @@ public class DeepSeekPlannerService {
                 请根据上述需求进行继续规划。
                 """
                 .formatted(userInput, historyContext);
+
+        AgentMDC.setSubAgentName(subAgentName);
+        AgentMDC.setEventType(AgentEventType.PLANNER_INPUT.getType());
+        AgentMDC.setPlannerInput(userMessage);
         log.info("[Planner-Sub] {} 开始任务规划 | userMessage = {}", subAgentName, JSON.toJSONString(userMessage));
+
         PlanDetailVO result = deepseekPlannerClient.prompt()
                 .system(SystemPrompt.TRAVEL_SUB_AGENT_PLANNER_SYSTEM_PROMPT)
                 .user(userMessage)
                 .call().entity(PlanDetailVO.class);
+
+        AgentMDC.setEventType(AgentEventType.PLANNER_OUTPUT.getType());
+        AgentMDC.setPlannerAction(result.getAction());
+        AgentMDC.setPlannerOutput(JSON.toJSONString(result));
         log.info("[Planner-Sub] {} 任务规划完成 | result = {} ", subAgentName, JSON.toJSONString(result));
+
+        AgentMDC.clearContentContext();
         return result;
     }
 
@@ -69,12 +92,23 @@ public class DeepSeekPlannerService {
                 请根据上述需求进行继续规划下一步任务。
                 """
                 .formatted(userInput, historyContext);
+
+        AgentMDC.setEventType(AgentEventType.PLANNER_INPUT.getType());
+        AgentMDC.setPlannerInput(userMessage);
         log.info("[Planner] DeepSeek 开始任务规划 | userMessage = {}", JSON.toJSONString(userMessage));
+
         PlanDetailVO result = deepseekPlannerClient.prompt()
                 .system(systemPrompt)
                 .user(userMessage)
                 .call().entity(PlanDetailVO.class);
+
+        AgentMDC.setEventType(AgentEventType.PLANNER_OUTPUT.getType());
+        AgentMDC.setPlannerAction(result.getAction());
+        AgentMDC.setSubAgentName(result.getSubAgentName());
+        AgentMDC.setPlannerOutput(JSON.toJSONString(result));
         log.info("[Planner] 任务规划完成 | result = {} ", JSON.toJSONString(result));
+
+        AgentMDC.clearContentContext();
         return result;
     }
 

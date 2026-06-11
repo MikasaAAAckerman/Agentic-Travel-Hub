@@ -18,7 +18,7 @@ public class LongTermMemory {
     private final VectorStore vectorStore;
 
     *//**
-     * 📥 录入长期偏好（比如用户突然说：“我其实对海鲜过敏”）
+     * 📥 录入长期偏好（比如用户突然说："我其实对海鲜过敏"）
      *
      * @param userId         绝对不能少的用户 ID，防止把别人的偏好记混了喵！
      * @param preferenceText 偏好内容

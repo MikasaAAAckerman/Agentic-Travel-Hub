@@ -19,10 +19,19 @@ public enum AgentEventType {
     AGENT_FINISH("AGENT_FINISH", "子Agent执行完成"),
     AGENT_RETRY("AGENT_RETRY", "子Agent重试"),
 
+    // ==================== Planner 事件 ====================
+    PLANNER_INPUT("PLANNER_INPUT", "Planner收到输入"),
+    PLANNER_OUTPUT("PLANNER_OUTPUT", "Planner产出计划"),
+
+    // ==================== Worker 事件 ====================
+    WORKER_INPUT("WORKER_INPUT", "Worker收到任务"),
+    WORKER_OUTPUT("WORKER_OUTPUT", "Worker产出结论"),
+
     // ==================== 工具事件 ====================
     TOOL_CALL("TOOL_CALL", "调用外部工具"),
     TOOL_FINISH("TOOL_FINISH", "工具调用完成"),
     TOOL_ERROR("TOOL_ERROR", "工具调用失败"),
+    TOOL_DETAIL("TOOL_DETAIL", "工具调用详情"),
 
     // ==================== 用户交互 ====================
     CLARIFY("CLARIFY", "需要用户补充信息"),
