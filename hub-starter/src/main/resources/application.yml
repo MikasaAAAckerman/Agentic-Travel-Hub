@@ -72,7 +72,7 @@ logging:
     org.springframework.ai: DEBUG
     com.travel.aiagent: DEBUG
   file:
-    name: ./logs/travel-hub.log
+    name: ${user.dir}/logs/travel-hub.log
 
 # ==================== Actuator + Prometheus 指标 ====================
 management:
