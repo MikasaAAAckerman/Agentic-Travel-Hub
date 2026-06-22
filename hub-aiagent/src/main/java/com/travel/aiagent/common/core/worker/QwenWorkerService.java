@@ -6,6 +6,7 @@ import com.travel.aiagent.common.domain.PlanDetailVO;
 import com.travel.aiagent.common.domain.WorkDetailVO;
 import com.travel.aiagent.common.domain.prompt.SystemPrompt;
 import com.travel.aiagent.common.utils.AgentMDC;
+import com.travel.aiagent.common.core.rag.ToolRagChannel;
 import com.travel.aiagent.common.utils.SpringAIDocumentUtils;
 import com.travel.hubtools.tool.common.IAgentTool;
 import jakarta.annotation.Resource;
@@ -20,7 +21,6 @@ import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.model.tool.ToolCallingChatOptions;
 import org.springframework.ai.rag.Query;
-import org.springframework.ai.rag.retrieval.search.DocumentRetriever;
 import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -43,7 +43,7 @@ public class QwenWorkerService {
     private Executor parallelThreadPool;
 
     private final ChatClient qwenChatClient;
-    private final DocumentRetriever travelDocumentRetriever;
+    private final ToolRagChannel toolRagChannel;
 
     /**
      * toolName → ToolCallback 映射表
@@ -52,11 +52,11 @@ public class QwenWorkerService {
 
     public QwenWorkerService(
             @Qualifier("qwenChatClient") ChatClient qwenChatClient,
-            @Qualifier("travelDocumentRetriever") DocumentRetriever travelDocumentRetriever,
+            ToolRagChannel toolRagChannel,
             List<IAgentTool> allAgentTools) {
-        log.info("[Worker] 初始化 QwenWorkerService");
+        log.info("[Worker] 初始化 QwenWorkerService | ragChannel={}", toolRagChannel.getChannelName());
         this.qwenChatClient = qwenChatClient;
-        this.travelDocumentRetriever = travelDocumentRetriever;
+        this.toolRagChannel = toolRagChannel;
         for (IAgentTool toolBean : allAgentTools) {
             ToolCallback[] callbacks = ToolCallbacks.from(toolBean);
             for (ToolCallback cb : callbacks) {
@@ -75,7 +75,7 @@ public class QwenWorkerService {
         log.info("[Worker] doWorkWithRag启动 | plan={}", JSON.toJSONString(planDetailVO));
 
         Query query = new Query(planDetailVO.getPlanDetail());
-        List<Document> toolDocumentList = travelDocumentRetriever.retrieve(query);
+        List<Document> toolDocumentList = toolRagChannel.retrieve(query);
         List<String> toolBeanList = SpringAIDocumentUtils.getToolBeanList(toolDocumentList, SpringAIDocumentUtils.TOOL_NAME_PATTERN);
         Set<ToolCallback> selectedCallbacks = new HashSet<>();
         for (String toolName : toolBeanList) {
@@ -143,7 +143,7 @@ public class QwenWorkerService {
         }
         Query query = new Query(planDetailVO.getPlanDetail());
 
-        List<Document> toolDocumentList = travelDocumentRetriever.retrieve(query);
+        List<Document> toolDocumentList = toolRagChannel.retrieve(query);
         List<String> toolBeanList = SpringAIDocumentUtils.getToolBeanList(toolDocumentList, SpringAIDocumentUtils.TOOL_NAME_PATTERN);
         Set<ToolCallback> selectedCallbacks = new HashSet<>();
         for (String toolName : toolBeanList) {

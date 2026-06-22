@@ -95,6 +95,12 @@ management:
 
 # ==================== 自定义配置 ====================
 
+# Tool RAG 召回通道配置
+# channel: bailian - 使用阿里云百炼云端检索（默认，包含 Dense + Sparse + Rerank）
+# channel: local   - 使用本地 PGVector + BM25 多路召回
+tool-rag:
+  channel: local
+
 # 旅行资料库名称（DashScope 知识库）
 travel-document-retriever-name: "旅行衣食住行资料库"
 
