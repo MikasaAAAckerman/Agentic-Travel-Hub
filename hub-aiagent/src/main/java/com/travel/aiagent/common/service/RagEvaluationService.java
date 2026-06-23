@@ -8,6 +8,7 @@ import org.springframework.ai.document.Document;
 import org.springframework.ai.rag.Query;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -37,7 +38,7 @@ public class RagEvaluationService {
     private static final double EVAL_SIMILARITY_THRESHOLD = 0.3;
 
     public RagEvaluationService(VectorStore vectorStore,
-                                 ChatClient qwenChatClient) {
+                                @Qualifier("qwenChatClient") ChatClient qwenChatClient) {
         this.vectorStore = vectorStore;
         this.evaluationClient = qwenChatClient;
         log.info("[Eval] 初始化 RAG 评测服务");

@@ -4,6 +4,7 @@ import com.alibaba.fastjson.JSON;
 import com.travel.aiagent.common.constant.AgentEventType;
 import com.travel.aiagent.common.domain.PlanDetailVO;
 import com.travel.aiagent.common.domain.prompt.SystemPrompt;
+import com.travel.aiagent.common.service.LlmCallLogService;
 import com.travel.aiagent.common.utils.AgentMDC;
 import com.travel.common.constant.BizException;
 import com.travel.common.constant.ServiceResponseTypeEnum;
@@ -23,6 +24,9 @@ public class DeepSeekPlannerService {
     @Resource
     private ChatClient deepseekPlannerClient;
 
+    @Resource
+    private LlmCallLogService llmCallLogService;
+
     /**
      * v0/v2 使用：传入用户输入和历史上下文
      */
@@ -38,15 +42,41 @@ public class DeepSeekPlannerService {
         AgentMDC.setPlannerInput(userMessage);
         log.info("[Planner] DeepSeek 开始任务规划 | userMessage = {}", JSON.toJSONString(userMessage));
 
-        PlanDetailVO result = deepseekPlannerClient.prompt()
-                .system(SystemPrompt.TRAVEL_PLANNER_SYSTEM_PROMPT)
-                .user(userMessage)
-                .call().entity(PlanDetailVO.class);
+        long startTime = System.currentTimeMillis();
+        boolean success = true;
+        String errorMessage = null;
+        PlanDetailVO result = null;
 
-        AgentMDC.setEventType(AgentEventType.PLANNER_OUTPUT.getType());
-        AgentMDC.setPlannerAction(result.getAction());
-        AgentMDC.setPlannerOutput(JSON.toJSONString(result));
-        log.info("[Planner] 任务规划完成 | result = {} ", JSON.toJSONString(result));
+        try {
+            result = deepseekPlannerClient.prompt()
+                    .system(SystemPrompt.TRAVEL_PLANNER_SYSTEM_PROMPT)
+                    .user(userMessage)
+                    .call().entity(PlanDetailVO.class);
+
+            AgentMDC.setEventType(AgentEventType.PLANNER_OUTPUT.getType());
+            AgentMDC.setPlannerAction(result.getAction());
+            AgentMDC.setPlannerOutput(JSON.toJSONString(result));
+            log.info("[Planner] 任务规划完成 | result = {} ", JSON.toJSONString(result));
+        } catch (Exception e) {
+            success = false;
+            errorMessage = e.getMessage();
+            log.error("[Planner] 任务规划失败", e);
+            throw e;
+        } finally {
+            long duration = System.currentTimeMillis() - startTime;
+            llmCallLogService.recordPlannerCall(
+                    "Planner",
+                    "v0",
+                    SystemPrompt.TRAVEL_PLANNER_SYSTEM_PROMPT,
+                    userMessage,
+                    historyContext,
+                    JSON.toJSONString(result),
+                    result,
+                    duration,
+                    success,
+                    errorMessage
+            );
+        }
 
         AgentMDC.clearContentContext();
         return result;
@@ -68,15 +98,41 @@ public class DeepSeekPlannerService {
         AgentMDC.setPlannerInput(userMessage);
         log.info("[Planner-Sub] {} 开始任务规划 | userMessage = {}", subAgentName, JSON.toJSONString(userMessage));
 
-        PlanDetailVO result = deepseekPlannerClient.prompt()
-                .system(SystemPrompt.TRAVEL_SUB_AGENT_PLANNER_SYSTEM_PROMPT)
-                .user(userMessage)
-                .call().entity(PlanDetailVO.class);
+        long startTime = System.currentTimeMillis();
+        boolean success = true;
+        String errorMessage = null;
+        PlanDetailVO result = null;
 
-        AgentMDC.setEventType(AgentEventType.PLANNER_OUTPUT.getType());
-        AgentMDC.setPlannerAction(result.getAction());
-        AgentMDC.setPlannerOutput(JSON.toJSONString(result));
-        log.info("[Planner-Sub] {} 任务规划完成 | result = {} ", subAgentName, JSON.toJSONString(result));
+        try {
+            result = deepseekPlannerClient.prompt()
+                    .system(SystemPrompt.TRAVEL_SUB_AGENT_PLANNER_SYSTEM_PROMPT)
+                    .user(userMessage)
+                    .call().entity(PlanDetailVO.class);
+
+            AgentMDC.setEventType(AgentEventType.PLANNER_OUTPUT.getType());
+            AgentMDC.setPlannerAction(result.getAction());
+            AgentMDC.setPlannerOutput(JSON.toJSONString(result));
+            log.info("[Planner-Sub] {} 任务规划完成 | result = {} ", subAgentName, JSON.toJSONString(result));
+        } catch (Exception e) {
+            success = false;
+            errorMessage = e.getMessage();
+            log.error("[Planner-Sub] {} 任务规划失败", subAgentName, e);
+            throw e;
+        } finally {
+            long duration = System.currentTimeMillis() - startTime;
+            llmCallLogService.recordPlannerCall(
+                    subAgentName,
+                    "v3",
+                    SystemPrompt.TRAVEL_SUB_AGENT_PLANNER_SYSTEM_PROMPT,
+                    userMessage,
+                    historyContext,
+                    JSON.toJSONString(result),
+                    result,
+                    duration,
+                    success,
+                    errorMessage
+            );
+        }
 
         AgentMDC.clearContentContext();
         return result;
@@ -97,16 +153,42 @@ public class DeepSeekPlannerService {
         AgentMDC.setPlannerInput(userMessage);
         log.info("[Planner] DeepSeek 开始任务规划 | userMessage = {}", JSON.toJSONString(userMessage));
 
-        PlanDetailVO result = deepseekPlannerClient.prompt()
-                .system(systemPrompt)
-                .user(userMessage)
-                .call().entity(PlanDetailVO.class);
+        long startTime = System.currentTimeMillis();
+        boolean success = true;
+        String errorMessage = null;
+        PlanDetailVO result = null;
 
-        AgentMDC.setEventType(AgentEventType.PLANNER_OUTPUT.getType());
-        AgentMDC.setPlannerAction(result.getAction());
-        AgentMDC.setSubAgentName(result.getSubAgentName());
-        AgentMDC.setPlannerOutput(JSON.toJSONString(result));
-        log.info("[Planner] 任务规划完成 | result = {} ", JSON.toJSONString(result));
+        try {
+            result = deepseekPlannerClient.prompt()
+                    .system(systemPrompt)
+                    .user(userMessage)
+                    .call().entity(PlanDetailVO.class);
+
+            AgentMDC.setEventType(AgentEventType.PLANNER_OUTPUT.getType());
+            AgentMDC.setPlannerAction(result.getAction());
+            AgentMDC.setSubAgentName(result.getSubAgentName());
+            AgentMDC.setPlannerOutput(JSON.toJSONString(result));
+            log.info("[Planner] 任务规划完成 | result = {} ", JSON.toJSONString(result));
+        } catch (Exception e) {
+            success = false;
+            errorMessage = e.getMessage();
+            log.error("[Planner] 任务规划失败", e);
+            throw e;
+        } finally {
+            long duration = System.currentTimeMillis() - startTime;
+            llmCallLogService.recordPlannerCall(
+                    "OrchestratorGraphAgent",
+                    "v3",
+                    systemPrompt,
+                    userMessage,
+                    historyContext,
+                    JSON.toJSONString(result),
+                    result,
+                    duration,
+                    success,
+                    errorMessage
+            );
+        }
 
         AgentMDC.clearContentContext();
         return result;

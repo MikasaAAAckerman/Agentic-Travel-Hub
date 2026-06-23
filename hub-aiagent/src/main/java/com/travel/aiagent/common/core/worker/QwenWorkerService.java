@@ -7,6 +7,7 @@ import com.travel.aiagent.common.domain.WorkDetailVO;
 import com.travel.aiagent.common.domain.prompt.SystemPrompt;
 import com.travel.aiagent.common.utils.AgentMDC;
 import com.travel.aiagent.common.core.rag.ToolRagChannel;
+import com.travel.aiagent.common.service.LlmCallLogService;
 import com.travel.aiagent.common.utils.SpringAIDocumentUtils;
 import com.travel.hubtools.tool.common.IAgentTool;
 import jakarta.annotation.Resource;
@@ -44,6 +45,7 @@ public class QwenWorkerService {
 
     private final ChatClient qwenChatClient;
     private final ToolRagChannel toolRagChannel;
+    private final LlmCallLogService llmCallLogService;
 
     /**
      * toolName → ToolCallback 映射表
@@ -53,10 +55,12 @@ public class QwenWorkerService {
     public QwenWorkerService(
             @Qualifier("qwenChatClient") ChatClient qwenChatClient,
             ToolRagChannel toolRagChannel,
+            LlmCallLogService llmCallLogService,
             List<IAgentTool> allAgentTools) {
         log.info("[Worker] 初始化 QwenWorkerService | ragChannel={}", toolRagChannel.getChannelName());
         this.qwenChatClient = qwenChatClient;
         this.toolRagChannel = toolRagChannel;
+        this.llmCallLogService = llmCallLogService;
         for (IAgentTool toolBean : allAgentTools) {
             ToolCallback[] callbacks = ToolCallbacks.from(toolBean);
             for (ToolCallback cb : callbacks) {
@@ -110,21 +114,65 @@ public class QwenWorkerService {
         );
         log.info("[Worker] 构建 RAG Worker Prompt -> {} ", workerPrompt);
 
-        ChatResponse chatResponse = qwenChatClient.prompt()
-                .system(SystemPrompt.TRAVEL_WORKER_SYSTEM_PROMPT)
-                .user(workerPrompt)
-                .toolCallbacks(selectedCallbacks.toArray(new ToolCallback[0]))
-                .call()
-                .chatResponse();
-        String finalAnswer = chatResponse.getResult().getOutput().getText();
-        WorkDetailVO workDetailVO = new WorkDetailVO(true, finalAnswer);
+        long startTime = System.currentTimeMillis();
+        boolean success = true;
+        String errorMessage = null;
+        String finalAnswer = null;
 
-        AgentMDC.setEventType(AgentEventType.WORKER_OUTPUT.getType());
-        AgentMDC.setWorkerConclusion(finalAnswer);
-        log.info("[Worker] RAG任务执行完成 | success={} | conclusion={}", workDetailVO.isSuccess(), finalAnswer);
+        try {
+            ChatResponse chatResponse = qwenChatClient.prompt()
+                    .system(SystemPrompt.TRAVEL_WORKER_SYSTEM_PROMPT)
+                    .user(workerPrompt)
+                    .toolCallbacks(selectedCallbacks.toArray(new ToolCallback[0]))
+                    .call()
+                    .chatResponse();
+            finalAnswer = chatResponse.getResult().getOutput().getText();
 
-        AgentMDC.clearContentContext();
-        return workDetailVO;
+            WorkDetailVO workDetailVO = new WorkDetailVO(true, finalAnswer);
+
+            AgentMDC.setEventType(AgentEventType.WORKER_OUTPUT.getType());
+            AgentMDC.setWorkerConclusion(finalAnswer);
+            log.info("[Worker] RAG任务执行完成 | success={} | conclusion={}", workDetailVO.isSuccess(), finalAnswer);
+
+            // 记录日志
+            long duration = System.currentTimeMillis() - startTime;
+            llmCallLogService.recordWorkerCall(
+                    "Worker",
+                    "v3",
+                    SystemPrompt.TRAVEL_WORKER_SYSTEM_PROMPT,
+                    workerPrompt,
+                    finalAnswer,
+                    JSON.toJSONString(toolBeanList),
+                    null,  // TODO: 记录工具执行结果
+                    duration,
+                    true,
+                    null
+            );
+
+            AgentMDC.clearContentContext();
+            return workDetailVO;
+        } catch (Exception e) {
+            success = false;
+            errorMessage = e.getMessage();
+            log.error("[Worker] RAG任务执行失败", e);
+
+            // 记录失败日志
+            long duration = System.currentTimeMillis() - startTime;
+            llmCallLogService.recordWorkerCall(
+                    "Worker",
+                    "v3",
+                    SystemPrompt.TRAVEL_WORKER_SYSTEM_PROMPT,
+                    workerPrompt,
+                    null,
+                    JSON.toJSONString(toolBeanList),
+                    null,
+                    duration,
+                    false,
+                    errorMessage
+            );
+
+            throw e;
+        }
     }
 
 

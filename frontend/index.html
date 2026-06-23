@@ -228,6 +228,121 @@
         }
         .memory-toggle:hover, .memory-toggle.active { background: var(--ink); color: #f7f3ed; }
 
+        /* ── 反馈按钮 ── */
+        .feedback-bar {
+            display: flex; align-items: center; gap: 12px;
+            margin-top: 12px; padding-top: 12px;
+            border-top: 1px dashed #e8ddd0;
+        }
+        .feedback-btn {
+            background: none; border: 1px solid var(--line);
+            color: var(--ink-fade); font-size: 18px;
+            padding: 6px 12px; cursor: pointer;
+            transition: all 0.2s; border-radius: 4px;
+            display: flex; align-items: center; gap: 6px;
+        }
+        .feedback-btn:hover {
+            background: #f5efe8; border-color: var(--ink-fade);
+            transform: translateY(-1px);
+        }
+        .feedback-btn.liked {
+            background: #e8f5e9; border-color: #4caf50; color: #4caf50;
+        }
+        .feedback-btn.disliked {
+            background: #fbe9e7; border-color: #ff5722; color: #ff5722;
+        }
+        .feedback-btn:disabled {
+            opacity: 0.5; cursor: not-allowed; transform: none;
+        }
+        .feedback-btn-label {
+            font-size: 10px; letter-spacing: 1px;
+        }
+
+        /* ── 点踩弹窗 ── */
+        .dislike-modal-overlay {
+            position: fixed; inset: 0;
+            background: rgba(44,36,22,0.3);
+            z-index: 200; display: flex;
+            align-items: center; justify-content: center;
+            opacity: 0; visibility: hidden;
+            transition: all 0.3s;
+        }
+        .dislike-modal-overlay.show {
+            opacity: 1; visibility: visible;
+        }
+        .dislike-modal {
+            background: var(--paper); border: 1px solid var(--line);
+            padding: 28px; width: 380px; max-width: 90vw;
+            box-shadow: 0 8px 40px rgba(0,0,0,0.12);
+            transform: translateY(20px);
+            transition: transform 0.3s;
+        }
+        .dislike-modal-overlay.show .dislike-modal {
+            transform: translateY(0);
+        }
+        .dislike-modal-title {
+            font-family: 'Shippori Mincho', serif;
+            font-size: 16px; color: var(--ink);
+            margin-bottom: 16px; letter-spacing: 2px;
+        }
+        .dislike-reason-grid {
+            display: grid; grid-template-columns: repeat(2, 1fr);
+            gap: 8px; margin-bottom: 16px;
+        }
+        .dislike-reason-btn {
+            background: #fdfaf6; border: 1px solid var(--line);
+            color: var(--ink-light); font-size: 12px;
+            padding: 10px; cursor: pointer; text-align: center;
+            transition: all 0.2s; font-family: inherit;
+        }
+        .dislike-reason-btn:hover {
+            background: #f5efe8; border-color: var(--ink-fade);
+        }
+        .dislike-reason-btn.selected {
+            background: var(--vermilion); color: #fff;
+            border-color: var(--vermilion);
+        }
+        .dislike-comment {
+            width: 100%; border: 1px solid var(--line);
+            padding: 12px; font-size: 13px; resize: vertical;
+            min-height: 80px; font-family: inherit;
+            background: #fdfaf6; color: var(--ink);
+        }
+        .dislike-comment::placeholder { color: #c8bca8; }
+        .dislike-comment:focus { outline: none; border-color: var(--ink-fade); }
+        .dislike-modal-actions {
+            display: flex; gap: 10px; margin-top: 16px;
+        }
+        .dislike-submit-btn, .dislike-cancel-btn {
+            flex: 1; padding: 10px; font-size: 12px;
+            letter-spacing: 2px; cursor: pointer;
+            font-family: inherit; transition: all 0.2s;
+        }
+        .dislike-submit-btn {
+            background: var(--vermilion); border: none; color: #fff;
+        }
+        .dislike-submit-btn:hover { background: #9a2a2f; }
+        .dislike-cancel-btn {
+            background: none; border: 1px solid var(--line);
+            color: var(--ink-light);
+        }
+        .dislike-cancel-btn:hover { background: #f5efe8; }
+
+        /* ── 反馈成功提示 ── */
+        .feedback-toast {
+            position: fixed; bottom: 40px; left: 50%;
+            transform: translateX(-50%) translateY(20px);
+            background: var(--ink); color: #f7f3ed;
+            padding: 12px 28px; font-size: 12px;
+            letter-spacing: 2px; z-index: 300;
+            opacity: 0; visibility: hidden;
+            transition: all 0.3s;
+        }
+        .feedback-toast.show {
+            opacity: 1; visibility: visible;
+            transform: translateX(-50%) translateY(0);
+        }
+
         .fade-in { animation: fadeSlide 0.4s ease-out; }
         @keyframes fadeSlide {
             from { opacity: 0; transform: translateY(12px); }
@@ -334,6 +449,29 @@
     </div>
 </div>
 
+<!-- 点踩弹窗 -->
+<div class="dislike-modal-overlay" id="dislike-modal">
+    <div class="dislike-modal">
+        <div class="dislike-modal-title">请告诉我们哪里不好</div>
+        <div class="dislike-reason-grid">
+            <button class="dislike-reason-btn" data-reason="hallucination">幻觉/编造</button>
+            <button class="dislike-reason-btn" data-reason="irrelevant">答非所问</button>
+            <button class="dislike-reason-btn" data-reason="incomplete">信息不全</button>
+            <button class="dislike-reason-btn" data-reason="outdated">信息过时</button>
+            <button class="dislike-reason-btn" data-reason="wrong_tool">工具选错</button>
+            <button class="dislike-reason-btn" data-reason="slow">太慢了</button>
+        </div>
+        <textarea class="dislike-comment" id="dislike-comment" placeholder="补充说明（可选）"></textarea>
+        <div class="dislike-modal-actions">
+            <button class="dislike-cancel-btn" onclick="closeDislikeModal()">取 消</button>
+            <button class="dislike-submit-btn" onclick="submitDislike()">提 交</button>
+        </div>
+    </div>
+</div>
+
+<!-- 反馈成功提示 -->
+<div class="feedback-toast" id="feedback-toast">感谢反馈喵~</div>
+
 <script>
     const VERSIONS = {
         v0: { endpoint: '/api/aiagent/chat/stream/v0', icon: '🔄', emoji: '🐱', title: 'ReAct 引擎', subtitle: 'v0 · while-if-else', engine: 'DualCoreReactEngine', footer: 'v0 · DeepSeek Planner + Qwen Worker + RAG', color: '#4a6741' },
@@ -422,12 +560,14 @@
         appendMessage('user', prompt);
         userInput.value = '';
         const responseId = 'resp-' + Date.now();
+        const traceId = 'trace-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
         const responseWrapper = appendMessage('agent', '', responseId);
         typewriterTarget = responseWrapper.querySelector('.text-content');
         typewriterBuffer = [];
         typewriterRunning = false;
 
         const v = VERSIONS[currentVersion];
+        const agentName = v.engine;
         const sseUrl = `http://localhost:8080${v.endpoint}?prompt=${encodeURIComponent(prompt)}&sessionId=hongdou_master&chatId=session_001`;
         const eventSource = new EventSource(sseUrl);
         eventSource.onmessage = (event) => {
@@ -442,6 +582,10 @@
         eventSource.onerror = () => {
             eventSource.close();
             // 不清 typewriterTarget，让打字机自然排空 buffer
+            // SSE 结束后添加反馈按钮
+            setTimeout(() => {
+                appendFeedbackBar(responseWrapper, traceId, agentName);
+            }, 500);
         };
     }
 
@@ -466,6 +610,148 @@
 
     sendBtn.addEventListener('click', handleSend);
     userInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') handleSend(); });
+
+    // ── 反馈功能 ──
+    const API_BASE = 'http://localhost:8080';
+    let currentFeedbackTraceId = null;
+    let currentFeedbackAgentName = null;
+    let selectedReason = null;
+
+    function appendFeedbackBar(wrapper, traceId, agentName) {
+        const feedbackBar = document.createElement('div');
+        feedbackBar.className = 'feedback-bar';
+        feedbackBar.innerHTML = `
+            <button class="feedback-btn" data-type="like" onclick="submitLike(this, '${traceId}', '${agentName}')">
+                👍 <span class="feedback-btn-label">赞</span>
+            </button>
+            <button class="feedback-btn" data-type="dislike" onclick="openDislikeModal(this, '${traceId}', '${agentName}')">
+                👎 <span class="feedback-btn-label">踩</span>
+            </button>
+        `;
+        wrapper.querySelector('.msg-agent').appendChild(feedbackBar);
+    }
+
+    async function submitLike(btn, traceId, agentName) {
+        const bar = btn.parentElement;
+        const likeBtn = bar.querySelector('[data-type="like"]');
+        const dislikeBtn = bar.querySelector('[data-type="dislike"]');
+
+        // 如果已经点赞，取消
+        if (likeBtn.classList.contains('liked')) {
+            likeBtn.classList.remove('liked');
+            likeBtn.disabled = false;
+            dislikeBtn.disabled = false;
+            return;
+        }
+
+        likeBtn.classList.add('liked');
+        likeBtn.disabled = true;
+        dislikeBtn.disabled = true;
+
+        try {
+            const res = await fetch(`${API_BASE}/api/feedback`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    traceId: traceId,
+                    userId: 'hongdou_master',
+                    agentName: agentName,
+                    rating: 1,
+                    comment: null
+                })
+            });
+            if (res.ok) {
+                showToast('感谢反馈喵~');
+            }
+        } catch (e) {
+            console.error('反馈提交失败:', e);
+            likeBtn.classList.remove('liked');
+            likeBtn.disabled = false;
+            dislikeBtn.disabled = false;
+        }
+    }
+
+    function openDislikeModal(btn, traceId, agentName) {
+        currentFeedbackTraceId = traceId;
+        currentFeedbackAgentName = agentName;
+        selectedReason = null;
+
+        const modal = document.getElementById('dislike-modal');
+        const comment = document.getElementById('dislike-comment');
+        comment.value = '';
+
+        // 重置选中状态
+        document.querySelectorAll('.dislike-reason-btn').forEach(b => b.classList.remove('selected'));
+
+        modal.classList.add('show');
+    }
+
+    function closeDislikeModal() {
+        const modal = document.getElementById('dislike-modal');
+        modal.classList.remove('show');
+        currentFeedbackTraceId = null;
+        currentFeedbackAgentName = null;
+    }
+
+    // 点踩原因按钮点击
+    document.querySelectorAll('.dislike-reason-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.dislike-reason-btn').forEach(b => b.classList.remove('selected'));
+            btn.classList.add('selected');
+            selectedReason = btn.dataset.reason;
+        });
+    });
+
+    async function submitDislike() {
+        const comment = document.getElementById('dislike-comment').value;
+        const reasonText = selectedReason ? `[${selectedReason}]` : '';
+        const fullComment = reasonText + (comment || '');
+
+        // 找到对应的反馈栏
+        const allFeedbackBars = document.querySelectorAll('.feedback-bar');
+        let targetBar = null;
+        allFeedbackBars.forEach(bar => {
+            const dislikeBtn = bar.querySelector('[data-type="dislike"]');
+            if (dislikeBtn && dislikeBtn.onclick && dislikeBtn.onclick.toString().includes(currentFeedbackTraceId)) {
+                targetBar = bar;
+            }
+        });
+
+        try {
+            const res = await fetch(`${API_BASE}/api/feedback`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    traceId: currentFeedbackTraceId,
+                    userId: 'hongdou_master',
+                    agentName: currentFeedbackAgentName,
+                    rating: -1,
+                    comment: fullComment || null
+                })
+            });
+            if (res.ok) {
+                if (targetBar) {
+                    const likeBtn = targetBar.querySelector('[data-type="like"]');
+                    const dislikeBtn = targetBar.querySelector('[data-type="dislike"]');
+                    dislikeBtn.classList.add('disliked');
+                    dislikeBtn.disabled = true;
+                    likeBtn.disabled = true;
+                }
+                closeDislikeModal();
+                showToast('感谢反馈，我们会改进的喵~');
+            }
+        } catch (e) {
+            console.error('反馈提交失败:', e);
+            closeDislikeModal();
+        }
+    }
+
+    function showToast(message) {
+        const toast = document.getElementById('feedback-toast');
+        toast.textContent = message;
+        toast.classList.add('show');
+        setTimeout(() => toast.classList.remove('show'), 2500);
+    }
 
     // 记忆面板
     let memoryAutoRefresh = null;
