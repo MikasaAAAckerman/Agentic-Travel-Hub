@@ -70,8 +70,8 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <configuration>
-                    <mainClass>HubStarterApplication</mainClass>
-                    <skip>true</skip>
+                    <mainClass>com.travel.starter.HubStarterApplication</mainClass>
+                    <skip>false</skip>
                 </configuration>
             </plugin>
         </plugins>
