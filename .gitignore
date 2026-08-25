@@ -57,3 +57,11 @@ build/
 ### OS 文件 ###
 .DS_Store
 Thumbs.db
+
+### Node.js（本地临时依赖，不入库） ###
+node_modules/
+package.json
+package-lock.json
+
+### 本地临时目录 ###
+temp/
