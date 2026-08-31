@@ -35,15 +35,16 @@ import java.util.stream.Collectors;
 
 /**
  * 共享 Worker 服务 —— 被 v0 / v1 / v2 / v3 共用。
+ * 模型通过 workerClient 角色注入，具体绑定哪个模型由 yml 的 agent-model.worker 决定。
  */
 @Service
 @Slf4j
-public class QwenWorkerService {
+public class WorkerService {
 
     @Resource(name = "parallelToolExecutor") // ⚠️ 必须通过名字指定，别拿错了喵！
     private Executor parallelThreadPool;
 
-    private final ChatClient qwenChatClient;
+    private final ChatClient workerClient;
     private final ToolRagChannel toolRagChannel;
     private final LlmCallLogService llmCallLogService;
 
@@ -52,13 +53,13 @@ public class QwenWorkerService {
      */
     private final Map<String, ToolCallback> globalToolRegistry = new HashMap<>();
 
-    public QwenWorkerService(
-            @Qualifier("qwenChatClient") ChatClient qwenChatClient,
+    public WorkerService(
+            @Qualifier("workerClient") ChatClient workerClient,
             ToolRagChannel toolRagChannel,
             LlmCallLogService llmCallLogService,
             List<IAgentTool> allAgentTools) {
-        log.info("[Worker] 初始化 QwenWorkerService | ragChannel={}", toolRagChannel.getChannelName());
-        this.qwenChatClient = qwenChatClient;
+        log.info("[Worker] 初始化 WorkerService | ragChannel={}", toolRagChannel.getChannelName());
+        this.workerClient = workerClient;
         this.toolRagChannel = toolRagChannel;
         this.llmCallLogService = llmCallLogService;
         for (IAgentTool toolBean : allAgentTools) {
@@ -120,7 +121,7 @@ public class QwenWorkerService {
         String finalAnswer = null;
 
         try {
-            ChatResponse chatResponse = qwenChatClient.prompt()
+            ChatResponse chatResponse = workerClient.prompt()
                     .system(SystemPrompt.TRAVEL_WORKER_SYSTEM_PROMPT)
                     .user(workerPrompt)
                     .toolCallbacks(selectedCallbacks.toArray(new ToolCallback[0]))
@@ -214,7 +215,7 @@ public class QwenWorkerService {
                 .build();
 
         // 将配置了工具不许自动执行的option挂载给chatClient
-        ChatResponse chatResponse = qwenChatClient.prompt()
+        ChatResponse chatResponse = workerClient.prompt()
                 .system(SystemPrompt.TRAVEL_WORKER_SYSTEM_PROMPT) //
                 .user("执行计划：" + planDetailVO.getPlanDetail())
                 .options(chatOptions)   // 将关闭工具自动执行的Option注入进来
@@ -276,7 +277,7 @@ public class QwenWorkerService {
                             .build()
             );
             log.info("[Worker] 开始进行finalResult总结 | message={}", JSON.toJSON(JSON.toJSONString(messages)));
-            ChatResponse finalResponse = qwenChatClient.prompt()
+            ChatResponse finalResponse = workerClient.prompt()
                     .system(SystemPrompt.WORKER_SUMMARY_SYSTEM_PROMPT)
                     .messages(messages)
                     .options(summaryOptions)

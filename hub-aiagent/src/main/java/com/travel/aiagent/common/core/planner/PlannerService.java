@@ -16,13 +16,14 @@ import org.springframework.stereotype.Service;
 
 /**
  * 共享 Planner 服务 —— 被 v0（DualCoreReactEngine）和 v1（GraphReactEngine）共用。
+ * 模型通过 plannerClient 角色注入，具体绑定哪个模型由 yml 的 agent-model.planner 决定。
  */
 @Slf4j
 @Service
-public class DeepSeekPlannerService {
+public class PlannerService {
 
     @Resource
-    private ChatClient deepseekPlannerClient;
+    private ChatClient plannerClient;
 
     @Resource
     private LlmCallLogService llmCallLogService;
@@ -48,7 +49,7 @@ public class DeepSeekPlannerService {
         PlanDetailVO result = null;
 
         try {
-            result = deepseekPlannerClient.prompt()
+            result = plannerClient.prompt()
                     .system(SystemPrompt.TRAVEL_PLANNER_SYSTEM_PROMPT)
                     .user(userMessage)
                     .call().entity(PlanDetailVO.class);
@@ -104,7 +105,7 @@ public class DeepSeekPlannerService {
         PlanDetailVO result = null;
 
         try {
-            result = deepseekPlannerClient.prompt()
+            result = plannerClient.prompt()
                     .system(SystemPrompt.TRAVEL_SUB_AGENT_PLANNER_SYSTEM_PROMPT)
                     .user(userMessage)
                     .call().entity(PlanDetailVO.class);
@@ -159,7 +160,7 @@ public class DeepSeekPlannerService {
         PlanDetailVO result = null;
 
         try {
-            result = deepseekPlannerClient.prompt()
+            result = plannerClient.prompt()
                     .system(systemPrompt)
                     .user(userMessage)
                     .call().entity(PlanDetailVO.class);

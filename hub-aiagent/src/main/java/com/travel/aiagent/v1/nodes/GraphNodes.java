@@ -3,8 +3,8 @@ package com.travel.aiagent.v1.nodes;
 import com.alibaba.fastjson2.JSON;
 import com.travel.aiagent.common.constant.PlanActionEnum;
 import com.travel.aiagent.common.domain.PlanDetailVO;
-import com.travel.aiagent.common.core.planner.DeepSeekPlannerService;
-import com.travel.aiagent.common.core.worker.QwenWorkerService;
+import com.travel.aiagent.common.core.planner.PlannerService;
+import com.travel.aiagent.common.core.worker.WorkerService;
 import com.travel.aiagent.common.domain.WorkDetailVO;
 import com.travel.aiagent.v1.state.GraphStateVO;
 import jakarta.annotation.Resource;
@@ -19,10 +19,10 @@ import org.springframework.stereotype.Component;
 public class GraphNodes {
 
     @Resource
-    DeepSeekPlannerService plannerService;
+    PlannerService plannerService;
 
     @Resource
-    QwenWorkerService workerService;
+    WorkerService workerService;
 
     /**
      * 计划执行节点

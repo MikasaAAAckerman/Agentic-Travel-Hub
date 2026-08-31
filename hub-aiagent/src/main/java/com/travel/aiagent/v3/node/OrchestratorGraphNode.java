@@ -4,7 +4,7 @@ import com.alibaba.cloud.ai.graph.action.AsyncNodeAction;
 import com.alibaba.cloud.ai.graph.action.NodeAction;
 import com.travel.aiagent.common.constant.AgentEventType;
 import com.travel.aiagent.common.constant.GraphStateKey;
-import com.travel.aiagent.common.core.planner.DeepSeekPlannerService;
+import com.travel.aiagent.common.core.planner.PlannerService;
 import com.travel.aiagent.common.domain.PlanDetailVO;
 import com.travel.aiagent.common.domain.prompt.SystemPrompt;
 import com.travel.aiagent.common.memory.ShortTermMemory;
@@ -25,7 +25,7 @@ import java.util.Map;
 public class OrchestratorGraphNode {
 
     @Resource
-    private DeepSeekPlannerService plannerService;
+    private PlannerService plannerService;
 
     @Resource
     private Map<String, BaseTravelGraphAgent> subGraphAgentsMap;

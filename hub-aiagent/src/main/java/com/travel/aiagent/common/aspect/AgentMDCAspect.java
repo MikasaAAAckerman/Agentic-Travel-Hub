@@ -111,9 +111,9 @@ public class AgentMDCAspect {
     }
 
     /**
-     * 拦截 Planner 调用（DeepSeekPlannerService）
+     * 拦截 Planner 调用（PlannerService）
      */
-    @Around("execution(* com.travel.aiagent.common.core.planner.DeepSeekPlannerService.*(..))")
+    @Around("execution(* com.travel.aiagent.common.core.planner.PlannerService.*(..))")
     public Object aroundPlanner(ProceedingJoinPoint pjp) throws Throwable {
         String methodName = pjp.getSignature().getName();
 
@@ -125,7 +125,7 @@ public class AgentMDCAspect {
             Object result = pjp.proceed();
             long elapsed = System.currentTimeMillis() - startTime;
 
-            // ── Layer 1：ELK ── Planner 完成日志（plannerInput/Output 由 DeepSeekPlannerService 内部手动埋点）
+            // ── Layer 1：ELK ── Planner 完成日志（plannerInput/Output 由 PlannerService 内部手动埋点）
             log.info("[Planner] {} 完成 | elapsed={}ms", methodName, elapsed);
 
             // ── Layer 2：Prometheus ── Timer 记录 Planner 耗时
@@ -152,9 +152,9 @@ public class AgentMDCAspect {
     }
 
     /**
-     * 拦截 Worker 调用（QwenWorkerService）
+     * 拦截 Worker 调用（WorkerService）
      */
-    @Around("execution(* com.travel.aiagent.common.core.worker.QwenWorkerService.*(..))")
+    @Around("execution(* com.travel.aiagent.common.core.worker.WorkerService.*(..))")
     public Object aroundWorker(ProceedingJoinPoint pjp) throws Throwable {
         String methodName = pjp.getSignature().getName();
 
@@ -169,7 +169,7 @@ public class AgentMDCAspect {
             Object result = pjp.proceed();
             long elapsed = System.currentTimeMillis() - startTime;
 
-            // ── Layer 1：ELK ── 标记工具完成（toolNames/workerConclusion 由 QwenWorkerService 内部手动埋点）
+            // ── Layer 1：ELK ── 标记工具完成（toolNames/workerConclusion 由 WorkerService 内部手动埋点）
             AgentMDC.setEventType(AgentEventType.TOOL_FINISH.getType());
             log.info("[Worker] {} 完成 | elapsed={}ms", methodName, elapsed);
 

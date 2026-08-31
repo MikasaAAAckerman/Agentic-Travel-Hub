@@ -1,7 +1,7 @@
 package com.travel.aiagent.v2;
 
 import com.travel.aiagent.common.constant.PlanActionEnum;
-import com.travel.aiagent.common.core.planner.DeepSeekPlannerService;
+import com.travel.aiagent.common.core.planner.PlannerService;
 import com.travel.aiagent.common.domain.PlanDetailVO;
 import com.travel.aiagent.common.domain.prompt.SystemPrompt;
 import com.travel.aiagent.common.memory.ShortTermMemory;
@@ -25,7 +25,7 @@ import java.util.function.Consumer;
 public class OrchestratorAgent {
 
     @Resource
-    DeepSeekPlannerService deepSeekPlannerService;
+    PlannerService deepSeekPlannerService;
 
     /**
      * 根据任务调度器返回的AgentName，动态调用合适的子Agent

@@ -3,8 +3,8 @@ package com.travel.aiagent.v0;
 import com.travel.aiagent.common.constant.PlanActionEnum;
 import com.travel.aiagent.common.domain.PlanDetailVO;
 import com.travel.aiagent.common.domain.WorkDetailVO;
-import com.travel.aiagent.common.core.planner.DeepSeekPlannerService;
-import com.travel.aiagent.common.core.worker.QwenWorkerService;
+import com.travel.aiagent.common.core.planner.PlannerService;
+import com.travel.aiagent.common.core.worker.WorkerService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -16,9 +16,9 @@ import java.util.function.Consumer;
 @RequiredArgsConstructor
 public class DualCoreReactEngine {
 
-    private final DeepSeekPlannerService planner;
+    private final PlannerService planner;
 
-    private final QwenWorkerService worker;
+    private final WorkerService worker;
 
     /**
      * 以ReAct模式将输入转为可执行的计划输出
