@@ -12,6 +12,7 @@ import reactor.core.publisher.Flux;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 @Slf4j
@@ -28,30 +29,42 @@ public class OrchestratorGraphAgent {
      * 流式模式 —— 利用 Spring AI Alibaba Graph 原生 stream()，
      * 每个 Node 执行完自动推送进度事件。
      */
-    public Flux<String> executeStream(String userInput, String userId, String chatId) {
+    public Flux<String> executeStream(String userInput, String userId, String chatId, String traceId) {
         Map<String, Object> init = new HashMap<>();
         init.put(GraphStateKey.USER_INPUT.getKey(), userInput);
         init.put(GraphStateKey.USER_ID.getKey(), userId);
         init.put(GraphStateKey.CHAT_ID.getKey(), chatId);
         init.put(GraphStateKey.LOOP_TIMES.getKey(), 0);
+        init.put(GraphStateKey.TRACE_ID.getKey(), traceId);
 
         log.info("OrchestratorGraphAgent 流式开始 | input={}", userInput);
 
         // 用 AtomicReference 拿最后一帧的结论
         AtomicReference<String> finalConclusion = new AtomicReference<>("抱歉，规划未完成~");
+        // clarify（需要用户补充信息）时，规划尚未完成，不展示"最终规划完成"
+        AtomicBoolean isClarify = new AtomicBoolean(false);
 
         return compiledGraph.stream(init)
-                .map(output -> formatProgress(output, finalConclusion))
+                .map(output -> formatProgress(output, finalConclusion, isClarify))
                 .filter(s -> !s.isEmpty())
-                .concatWith(Flux.defer(() ->
-                        Flux.just("\n🎉 最终规划完成：\n" + finalConclusion.get())));
+                .concatWith(Flux.defer(() -> {
+                    if (isClarify.get()) {
+                        return Flux.empty();
+                    }
+                    return Flux.just("\n🎉 最终规划完成：\n" + finalConclusion.get());
+                }));
     }
 
     /** 把 NodeOutput 转成人话进度 */
-    private String formatProgress(NodeOutput output, AtomicReference<String> conclusionHolder) {
+    private String formatProgress(NodeOutput output, AtomicReference<String> conclusionHolder, AtomicBoolean clarifyFlag) {
         String node = output.node();
         OverAllState state = output.state();
         if (state == null) return "";
+
+        // 走走 clarify 节点即说明需要用户补充信息，标记后结尾不再展示"最终规划完成"
+        if ("clarify".equals(node)) {
+            clarifyFlag.set(true);
+        }
 
         String action = state.value(GraphStateKey.ACTION.getKey(), "");
         String subAgentName = state.value(GraphStateKey.SUB_AGENT_NAME.getKey(), "");

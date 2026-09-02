@@ -152,7 +152,7 @@ public class PlannerService {
 
         AgentMDC.setEventType(AgentEventType.PLANNER_INPUT.getType());
         AgentMDC.setPlannerInput(userMessage);
-        log.info("[Planner] DeepSeek 开始任务规划 | userMessage = {}", JSON.toJSONString(userMessage));
+        log.info("[Planner] 开始任务规划 | userMessage = {}", JSON.toJSONString(userMessage));
 
         long startTime = System.currentTimeMillis();
         boolean success = true;

@@ -18,6 +18,7 @@ public enum GraphStateKey {
     SUB_AGENT_PLAN_DETAIL("subAgentPlanDetail", "子Agent的规划结果"),
     WORKER_CONCLUSION("workerConclusion", "worker结论"),
     LOOP_TIMES("loopTimes", "Agent调度者与子Agent，子AgentPlanner和worker的对话次数"),
+    TRACE_ID("traceId", "会话级链路追踪ID，前端生成随请求传入，贯穿LLM调用日志"),
 
 
     ;

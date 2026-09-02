@@ -5,11 +5,11 @@
 
 CREATE TABLE IF NOT EXISTS llm_feedback (
     id          BIGSERIAL PRIMARY KEY,
-    trace_id    VARCHAR(64)  NOT NULL COMMENT '关联请求追踪ID',
-    user_id     VARCHAR(64)  NOT NULL COMMENT '用户ID',
-    agent_name  VARCHAR(32)  NOT NULL COMMENT '回复的Agent名称',
-    rating      SMALLINT     NOT NULL COMMENT '1=赞, -1=踩',
-    comment     VARCHAR(500) DEFAULT NULL COMMENT '用户补充原因',
+    trace_id    VARCHAR(64)  NOT NULL,
+    user_id     VARCHAR(64)  NOT NULL,
+    agent_name  VARCHAR(32)  NOT NULL,
+    rating      SMALLINT     NOT NULL,
+    comment     VARCHAR(500) DEFAULT NULL,
     created_at  TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     -- 索引

@@ -25,8 +25,8 @@ public class ShortTermMemory {
     private ChatMemory chatMemory;
 
     @Resource
-    @Qualifier("qwenChatClient")
-    private ChatClient qwenChatClient;
+    @Qualifier("assistantClient")
+    private ChatClient assistantClient;
 
     /** 当对话消息数超过此阈值时触发压缩 */
     private static final int COMPRESS_THRESHOLD = 20;
@@ -105,7 +105,7 @@ public class ShortTermMemory {
             }
 
             // 2. 让 LLM 压缩成结构化摘要
-            String compressed = qwenChatClient.prompt()
+            String compressed = assistantClient.prompt()
                     .user("""
                             请把以下对话历史压缩成一段不超过200字的摘要，但是如有必要，可以扩展到500字
                             保留关键信息：目的地、日期、人数、预算、偏好、已确定的行程细节。

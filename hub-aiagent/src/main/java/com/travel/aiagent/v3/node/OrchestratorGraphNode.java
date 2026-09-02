@@ -43,7 +43,12 @@ public class OrchestratorGraphNode {
             String chatId = state.value(GraphStateKey.CHAT_ID.getKey(), "");
             String chatMemory = shortTermMemory.getMemoryByUserIdAndChatId(userId, chatId);
             Integer loopTimes = state.value(GraphStateKey.LOOP_TIMES.getKey(), 0);
+            String traceId = state.value(GraphStateKey.TRACE_ID.getKey(), "");
 
+            // 从 Graph State 恢复前端传入的 traceId，跨线程穿透，保证 LLM 调用日志能关联
+            if (traceId != null && !traceId.isBlank()) {
+                AgentMDC.setTraceId(traceId);
+            }
             AgentMDC.setEventType(AgentEventType.ORCHESTRATOR_ROUND.getType());
             AgentMDC.setRound(loopTimes);
             log.info("[V3] Orchestrator planner 节点 | 第{}轮调度", loopTimes);

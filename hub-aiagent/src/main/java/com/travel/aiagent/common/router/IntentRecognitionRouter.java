@@ -16,11 +16,11 @@ import org.springframework.stereotype.Service;
 public class IntentRecognitionRouter {
 
     @Resource
-    private ChatClient qwenChatClient;
+    private ChatClient assistantClient;
 
     public String doIntentRecognition(String userInput) {
         log.info(" 开始对用户输入做意图识别 ");
-        ChatResponse chatResponse = qwenChatClient.prompt()
+        ChatResponse chatResponse = assistantClient.prompt()
                 .system("""
                         你是一名及其专业的意图分析师，你的任务是将当前用户的输入判断是闲聊还是需要制定计划。
                         

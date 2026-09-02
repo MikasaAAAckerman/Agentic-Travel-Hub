@@ -2,6 +2,7 @@ package com.travel.starter.controller;
 
 import com.travel.aiagent.common.memory.ShortTermMemory;
 import com.travel.aiagent.common.router.IntentRecognitionRouter;
+import com.travel.aiagent.common.utils.AgentMDC;
 import com.travel.aiagent.v0.DualCoreReactEngine;
 import com.travel.aiagent.v1.GraphReactEngine;
 import com.travel.aiagent.v2.OrchestratorAgent;
@@ -53,7 +54,7 @@ public class TravelAgentController {
     private IntentRecognitionRouter intentRecognitionRouter;
 
     @Resource
-    private ChatClient qwenChatClient;
+    private ChatClient assistantClient;
 
     // ═══════════════════════════════════════
     // v0：while-if-else ReAct
@@ -78,7 +79,7 @@ public class TravelAgentController {
                     sink.next("\n🎉 最终规划完成：\n" + result);
                 } else {
                     log.info("[V0] 闲聊模式");
-                    sink.next(qwenChatClient.prompt().user(prompt).call().content());
+                    sink.next(assistantClient.prompt().user(prompt).call().content());
                 }
                 sink.complete();
             } catch (Exception e) {
@@ -111,7 +112,7 @@ public class TravelAgentController {
                     sink.next("\n🎉 最终规划完成：\n" + result);
                 } else {
                     log.info("[V1] 闲聊模式");
-                    sink.next(qwenChatClient.prompt().user(prompt).call().content());
+                    sink.next(assistantClient.prompt().user(prompt).call().content());
                 }
                 sink.complete();
             } catch (Exception e) {
@@ -144,7 +145,7 @@ public class TravelAgentController {
                     sink.next("\n🎉 专家团队规划完成：\n" + result);
                 } else {
                     log.info("[V2] 闲聊模式");
-                    sink.next(qwenChatClient.prompt().user(prompt).call().content());
+                    sink.next(assistantClient.prompt().user(prompt).call().content());
                 }
                 sink.complete();
             } catch (Exception e) {
@@ -162,12 +163,19 @@ public class TravelAgentController {
     public Flux<String> chatStreamV3(
             @RequestParam("prompt") String prompt,
             @RequestParam(value = "sessionId", defaultValue = "default_session_123") String sessionId,
-            @RequestParam(value = "chatId", defaultValue = "default_chatId_ryqqubghkjnad") String chatId) {
+            @RequestParam(value = "chatId", defaultValue = "default_chatId_ryqqubghkjnad") String chatId,
+            @RequestParam(value = "traceId", required = false) String traceId) {
+
+        // 前端传入的会话级 traceId：设置进 MDC，并随 Graph State 穿透到 LLM 调用日志
+        if (traceId != null && !traceId.isBlank()) {
+            AgentMDC.setTraceId(traceId);
+        }
+        log.info("[V3] 收到请求 | traceId={}", traceId);
 
         String intent = intentRecognitionRouter.doIntentRecognition(prompt);
         if (!"PLAN".equals(intent)) {
             log.info("[V3] 闲聊模式");
-            return Flux.just(qwenChatClient.prompt().user(prompt).call().content());
+            return Flux.just(assistantClient.prompt().user(prompt).call().content());
         }
 
         log.info("[V3] Graph多Agent 流式引擎启动");
@@ -179,7 +187,7 @@ public class TravelAgentController {
         sink.tryEmitNext("✨ [V3 · Graph Multi-Agent] 两层Graph嵌套，红豆调度专家团队中喵！\n\n");
 
         // 图执行放独立线程，每到一个节点就 tryEmitNext 实时推给前端
-        v3Engine.executeStream(prompt, sessionId, chatId)
+        v3Engine.executeStream(prompt, sessionId, chatId, traceId)
                 .doOnNext(sink::tryEmitNext)
                 .doOnComplete(sink::tryEmitComplete)
                 .doOnError(e -> {

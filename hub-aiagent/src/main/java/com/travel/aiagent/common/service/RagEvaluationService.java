@@ -38,9 +38,9 @@ public class RagEvaluationService {
     private static final double EVAL_SIMILARITY_THRESHOLD = 0.3;
 
     public RagEvaluationService(VectorStore vectorStore,
-                                @Qualifier("qwenChatClient") ChatClient qwenChatClient) {
+                                @Qualifier("assistantClient") ChatClient assistantClient) {
         this.vectorStore = vectorStore;
-        this.evaluationClient = qwenChatClient;
+        this.evaluationClient = assistantClient;
         log.info("[Eval] 初始化 RAG 评测服务");
     }
 

@@ -1,5 +1,7 @@
 package com.travel.aiagent.common.core.rag;
 
+import com.travel.common.constant.BizException;
+import com.travel.common.constant.ServiceResponseTypeEnum;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.rag.Query;
@@ -94,7 +96,7 @@ public class LocalToolRagChannel implements ToolRagChannel {
             return vectorStore.similaritySearch(searchRequest);
         } catch (Exception e) {
             log.error("[ToolRag] Dense召回异常", e);
-            return Collections.emptyList();
+            throw new BizException(ServiceResponseTypeEnum.SYSTEM_ERROR);
         }
     }
 

@@ -349,6 +349,55 @@
             to { opacity: 1; transform: translateY(0); }
         }
 
+        /* ── 监控快捷入口（hover 展开）── */
+        .monitor-shortcut {
+            position: fixed; top: 20px; right: 20px; z-index: 150;
+            display: flex; align-items: center; gap: 0;
+        }
+        .monitor-trigger {
+            width: 44px; height: 44px; border-radius: 50%;
+            border: 1px solid var(--line);
+            background: var(--paper);
+            color: var(--ink-light);
+            font-size: 20px; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            box-shadow: var(--shadow);
+            transition: all 0.3s;
+            position: relative; z-index: 2;
+            opacity: 0.25; /* 平时半透明，低调 */
+        }
+        .monitor-shortcut:hover .monitor-trigger {
+            opacity: 1; color: var(--vermilion);
+            border-color: var(--vermilion-fade);
+        }
+        .monitor-menu {
+            display: flex; align-items: center; gap: 6px;
+            max-width: 0; overflow: hidden;
+            transition: max-width 0.35s ease, opacity 0.3s ease, padding 0.3s ease;
+            opacity: 0; padding-left: 0;
+        }
+        .monitor-shortcut:hover .monitor-menu {
+            max-width: 620px; opacity: 1; padding-left: 10px;
+        }
+        .monitor-link {
+            white-space: nowrap;
+            background: var(--paper); border: 1px solid var(--line);
+            color: var(--ink-light); font-size: 11px;
+            letter-spacing: 1px; padding: 9px 14px;
+            text-decoration: none; cursor: pointer;
+            transition: all 0.2s; flex-shrink: 0;
+            font-family: inherit;
+        }
+        .monitor-link:hover {
+            background: var(--ink); color: #f7f3ed;
+            border-color: var(--ink);
+            transform: translateY(-1px);
+        }
+        .monitor-link .ml-dot {
+            display: inline-block; width: 6px; height: 6px;
+            border-radius: 50%; margin-right: 6px; vertical-align: 1px;
+        }
+
         @media (max-width: 768px) {
             .container { max-width: 100%; height: 100vh; border: none; box-shadow: none; }
             .version-grid { grid-template-columns: repeat(2, 1fr); }
@@ -472,6 +521,19 @@
 <!-- 反馈成功提示 -->
 <div class="feedback-toast" id="feedback-toast">感谢反馈喵~</div>
 
+<!-- 监控快捷入口（hover 展开） -->
+<div class="monitor-shortcut">
+    <div class="monitor-trigger" title="监控面板">📡</div>
+    <div class="monitor-menu">
+        <a class="monitor-link" href="http://localhost:3000" target="_blank"><span class="ml-dot" style="background:#e6522c;"></span>Grafana</a>
+        <a class="monitor-link" href="http://localhost:9190" target="_blank"><span class="ml-dot" style="background:#e6522c;"></span>Prometheus</a>
+        <a class="monitor-link" href="http://localhost:16686" target="_blank"><span class="ml-dot" style="background:#66c2a5;"></span>Jaeger</a>
+        <a class="monitor-link" href="http://localhost:5601" target="_blank"><span class="ml-dot" style="background:#f04e98;"></span>Kibana</a>
+        <a class="monitor-link" href="http://localhost:9200" target="_blank"><span class="ml-dot" style="background:#f9b110;"></span>Elasticsearch</a>
+        <a class="monitor-link" href="http://localhost:5050" target="_blank"><span class="ml-dot" style="background:#326690;"></span>pgAdmin</a>
+    </div>
+</div>
+
 <script>
     const VERSIONS = {
         v0: { endpoint: '/api/aiagent/chat/stream/v0', icon: '🔄', emoji: '🐱', title: 'ReAct 引擎', subtitle: 'v0 · while-if-else', engine: 'DualCoreReactEngine', footer: 'v0 · DeepSeek Planner + Qwen Worker + RAG', color: '#4a6741' },
@@ -480,6 +542,8 @@
         v3: { endpoint: '/api/aiagent/chat/stream/v3', icon: '🧬', emoji: '🐱', title: '旅行计划', subtitle: 'v3 · 两层Graph嵌套', engine: 'OrchestratorGraphAgent', footer: 'v3 · Spring AI Alibaba Graph Core', color: '#b5343a' }
     };
     let currentVersion = 'v3';
+    // 会话级 traceId：页面加载生成一次，刷新页面才会变新；不刷新则一直保持
+    const SESSION_TRACE_ID = 'tr-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
     const chatContainer = document.getElementById('chat-container');
     const userInput = document.getElementById('user-input');
     const sendBtn = document.getElementById('send-btn');
@@ -560,7 +624,7 @@
         appendMessage('user', prompt);
         userInput.value = '';
         const responseId = 'resp-' + Date.now();
-        const traceId = 'trace-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+        const traceId = SESSION_TRACE_ID;
         const responseWrapper = appendMessage('agent', '', responseId);
         typewriterTarget = responseWrapper.querySelector('.text-content');
         typewriterBuffer = [];
@@ -568,7 +632,7 @@
 
         const v = VERSIONS[currentVersion];
         const agentName = v.engine;
-        const sseUrl = `http://localhost:8080${v.endpoint}?prompt=${encodeURIComponent(prompt)}&sessionId=hongdou_master&chatId=session_001`;
+        const sseUrl = `http://localhost:8080${v.endpoint}?prompt=${encodeURIComponent(prompt)}&sessionId=hongdou_master&chatId=session_001&traceId=${SESSION_TRACE_ID}`;
         const eventSource = new EventSource(sseUrl);
         eventSource.onmessage = (event) => {
             const data = event.data;

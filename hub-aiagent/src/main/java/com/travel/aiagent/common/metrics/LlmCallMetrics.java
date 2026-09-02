@@ -23,47 +23,8 @@ public class LlmCallMetrics {
 
     private final MeterRegistry meterRegistry;
 
-    /**
-     * LLM 调用总数
-     */
-    private final Counter llmCallTotal;
-
-    /**
-     * LLM 调用失败总数
-     */
-    private final Counter llmCallErrorsTotal;
-
-    /**
-     * LLM 调用耗时
-     */
-    private final Timer llmCallDuration;
-
-    /**
-     * LLM 调用 Token 消耗
-     */
-    private final Counter llmCallTotalTokens;
-
     public LlmCallMetrics(MeterRegistry meterRegistry) {
         this.meterRegistry = meterRegistry;
-
-        // 初始化指标
-        this.llmCallTotal = Counter.builder("llm_call_total")
-                .description("LLM 调用总数")
-                .register(meterRegistry);
-
-        this.llmCallErrorsTotal = Counter.builder("llm_call_errors_total")
-                .description("LLM 调用失败总数")
-                .register(meterRegistry);
-
-        this.llmCallDuration = Timer.builder("llm_call_duration_seconds")
-                .description("LLM 调用耗时")
-                .publishPercentiles(0.5, 0.95, 0.99)
-                .register(meterRegistry);
-
-        this.llmCallTotalTokens = Counter.builder("llm_call_total_tokens")
-                .description("LLM 调用 Token 消耗")
-                .register(meterRegistry);
-
         log.info("[Metrics] 初始化 LLM 调用指标采集器");
     }
 
