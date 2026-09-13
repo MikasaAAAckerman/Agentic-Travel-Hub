@@ -6,13 +6,17 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * 一次 Agent 执行（v3 结构化短期记忆的内层单元）。
+ * 子 Agent 内部一轮「自我 ReAct」（v3 结构化记忆的原子单元）。
  *
- * <p>对应「一次 subAgent 执行」：orchestrator 下发原始 plan → subAgent 执行 → 产出结论。
- * 挂在外层 {@link RoundVO} 之下，一轮（一次用户请求）可包含多次 agent 执行。
+ * <p>场景：orchestrator 下发 plan 给子 Agent，子 Agent 内部做多轮 planner→worker→planner 循环。
+ * 每一轮 = 一个自我 plan + worker 结论。挂在 {@link SubAgentReActContextVO} 之下累积，
+ * 保证子 Agent 在一轮执行内不丢失「前几轮干了什么」的记忆。
  *
- * <p>对比旧版 {@link ShortTermMemory} 的平铺 String 拼接，
- * 它把「谁、干了什么、结果如何」拆成结构化字段，debug 时能看清每步。
+ * <p>序列化给 LLM 的形态：
+ * <pre>
+ * { "traceId": "tr-xxx", "agent": "RouteGraphAgent", "round": 1,
+ *   "plan": "制定一下9月17号的路程", "conclusion": "9月17日：白云山→越秀公园…" }
+ * </pre>
  */
 @Data
 @Builder
@@ -20,12 +24,18 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class TurnVO {
 
-    /** 哪个 subAgent（如 WeatherGraphAgent） */
+    /** 请求级 traceId（透传，方便按 traceId 追踪整个对话中 subAgent 做了什么） */
+    private String traceId;
+
+    /** 哪个 subAgent（如 RouteGraphAgent） */
     private String agent;
 
-    /** orchestrator 下发的原始 plan */
+    /** 子 Agent 内部第几轮自我规划（从 1 开始） */
+    private int round;
+
+    /** 自我 plan（给 worker 的任务） */
     private String plan;
 
-    /** 执行结果（本轮保留全文，不做摘要） */
+    /** worker 执行结论 */
     private String conclusion;
 }

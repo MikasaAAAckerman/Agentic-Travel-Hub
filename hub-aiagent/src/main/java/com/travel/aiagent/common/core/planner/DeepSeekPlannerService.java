@@ -4,6 +4,7 @@ import com.alibaba.fastjson.JSON;
 import com.travel.aiagent.common.constant.AgentEventType;
 import com.travel.aiagent.common.domain.PlanDetailVO;
 import com.travel.aiagent.common.domain.prompt.SystemPrompt;
+import com.travel.aiagent.common.memory.SubAgentReActContextVO;
 import com.travel.aiagent.common.utils.AgentMDC;
 import com.travel.common.constant.BizException;
 import com.travel.common.constant.ServiceResponseTypeEnum;
@@ -62,6 +63,38 @@ public class DeepSeekPlannerService {
                 请根据上述需求进行继续规划。
                 """
                 .formatted(userInput, historyContext);
+
+        AgentMDC.setSubAgentName(subAgentName);
+        AgentMDC.setEventType(AgentEventType.PLANNER_INPUT.getType());
+        AgentMDC.setPlannerInput(userMessage);
+        log.info("[Planner-Sub] {} 开始任务规划 | userMessage = {}", subAgentName, JSON.toJSONString(userMessage));
+
+        PlanDetailVO result = deepseekPlannerClient.prompt()
+                .system(SystemPrompt.TRAVEL_SUB_AGENT_PLANNER_SYSTEM_PROMPT)
+                .user(userMessage)
+                .call().entity(PlanDetailVO.class);
+
+        AgentMDC.setEventType(AgentEventType.PLANNER_OUTPUT.getType());
+        AgentMDC.setPlannerAction(result.getAction());
+        AgentMDC.setPlannerOutput(JSON.toJSONString(result));
+        log.info("[Planner-Sub] {} 任务规划完成 | result = {} ", subAgentName, JSON.toJSONString(result));
+
+        AgentMDC.clearContentContext();
+        return result;
+    }
+
+    /**
+     * v3 子 Agent 专用：传入结构化的 ReAct 记忆（orchestratorPlan + 前几轮自我 plan/结论）。
+     * 与上面的 String 版（v0/v1/v2 用）区分，避免破坏旧版本调用。
+     */
+    public PlanDetailVO doSubAgentPlanReAct(SubAgentReActContextVO context, String subAgentName) {
+        String userMessage = """
+                这是 orchestrator 给你下发的任务，以及你之前每一轮的自我规划与执行结果：
+
+                %s
+
+                请根据上述信息继续规划下一步任务。
+                """.formatted(JSON.toJSONString(context));
 
         AgentMDC.setSubAgentName(subAgentName);
         AgentMDC.setEventType(AgentEventType.PLANNER_INPUT.getType());

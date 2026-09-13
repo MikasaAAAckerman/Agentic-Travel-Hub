@@ -5,7 +5,9 @@ import com.alibaba.cloud.ai.graph.NodeOutput;
 import com.alibaba.cloud.ai.graph.OverAllState;
 import com.travel.aiagent.common.constant.GraphStateKey;
 import com.travel.aiagent.common.constant.PlanActionEnum;
+import com.travel.aiagent.common.memory.RoundMemory;
 import com.travel.aiagent.v3.graph.OrchestratorGraph;
+import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
@@ -20,6 +22,9 @@ public class OrchestratorGraphAgent {
 
     private final CompiledGraph compiledGraph;
 
+    @Resource
+    private RoundMemory roundMemory;
+
     public OrchestratorGraphAgent(OrchestratorGraph graph) {
         this.compiledGraph = graph.buildGraph();
     }
@@ -28,12 +33,16 @@ public class OrchestratorGraphAgent {
      * 流式模式 —— 利用 Spring AI Alibaba Graph 原生 stream()，
      * 每个 Node 执行完自动推送进度事件。
      */
-    public Flux<String> executeStream(String userInput, String userId, String chatId) {
+    public Flux<String> executeStream(String userInput, String userId, String chatId, String traceId) {
+        // 第一套对话级记忆：开一轮，记录用户输入
+        roundMemory.startRound(userId, chatId, userInput);
+
         Map<String, Object> init = new HashMap<>();
         init.put(GraphStateKey.USER_INPUT.getKey(), userInput);
         init.put(GraphStateKey.USER_ID.getKey(), userId);
         init.put(GraphStateKey.CHAT_ID.getKey(), chatId);
         init.put(GraphStateKey.LOOP_TIMES.getKey(), 0);
+        init.put(GraphStateKey.TRACE_ID.getKey(), traceId);
 
         log.info("OrchestratorGraphAgent 流式开始 | input={}", userInput);
 
@@ -44,7 +53,9 @@ public class OrchestratorGraphAgent {
                 .map(output -> formatProgress(output, finalConclusion))
                 .filter(s -> !s.isEmpty())
                 .concatWith(Flux.defer(() ->
-                        Flux.just("\n🎉 最终规划完成：\n" + finalConclusion.get())));
+                        Flux.just("\n🎉 最终规划完成：\n" + finalConclusion.get())))
+                // 收尾：无论 finish / clarify / overMaxLoopTimes 哪种结束，都写最终回复
+                .doFinally(sig -> roundMemory.finishRound(userId, chatId, finalConclusion.get()));
     }
 
     /** 把 NodeOutput 转成人话进度 */

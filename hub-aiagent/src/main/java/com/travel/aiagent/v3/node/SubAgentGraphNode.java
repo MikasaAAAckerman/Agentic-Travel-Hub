@@ -10,13 +10,17 @@ import com.travel.aiagent.common.core.worker.QwenWorkerService;
 import com.travel.aiagent.common.domain.PlanDetailVO;
 import com.travel.aiagent.common.domain.WorkDetailVO;
 import com.travel.aiagent.common.memory.ShortTermMemory;
+import com.travel.aiagent.common.memory.SubAgentReActContextVO;
+import com.travel.aiagent.common.memory.TurnVO;
 import com.travel.aiagent.common.utils.AgentMDC;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -48,28 +52,32 @@ public class SubAgentGraphNode {
 
             // 获取调度者Agent派发的任务规划（包含用户原始需求+子任务，始终不变）
             String orchestratorPlan = state.value(GraphStateKey.ORCHESTRATOR_AGENT_PLAN_DETAIL.getKey(), "");
-            // 获取子Agent上一轮自己的任务规划
-            String subAgentPlan = state.value(GraphStateKey.SUB_AGENT_PLAN_DETAIL.getKey(), "");
             Integer loopTimes = state.value(GraphStateKey.LOOP_TIMES.getKey(), 0);
             String subAgentName = state.value(GraphStateKey.SUB_AGENT_NAME.getKey(), "");
+
+            // traceId 透传：从上游 GraphState 恢复，保证子 Agent 日志与主链路关联
+            String traceId = state.value(GraphStateKey.TRACE_ID.getKey(), "");
+            if (StringUtils.isNotBlank(traceId)) {
+                AgentMDC.setTraceId(traceId);
+            }
 
             AgentMDC.setSubAgentName(subAgentName);
             AgentMDC.setRound(loopTimes);
             AgentMDC.setEventType(AgentEventType.ORCHESTRATOR_ROUND.getType());
             log.info("[V3-Sub] {} planner 节点 | 第{}轮", subAgentName, loopTimes);
 
-            String historyWorkDetail = state.value(GraphStateKey.WORKER_CONCLUSION.getKey(), "");
-
-            // 始终以 orchestratorPlan（含用户上下文）为基础
-            // 如果有上一轮自己的计划，作为补充信息传入
-            String myPlan;
-            if (StringUtils.isNotBlank(subAgentPlan)) {
-                myPlan = orchestratorPlan + "\n【上一轮执行计划】" + subAgentPlan;
-            } else {
-                myPlan = orchestratorPlan;
+            // 读取子 Agent 的 ReAct 记忆（orchestratorPlan 固定 + turns 累积）
+            SubAgentReActContextVO reactContext = state.value(GraphStateKey.SUB_AGENT_REACT_MEMORY.getKey(), (SubAgentReActContextVO) null);
+            if (reactContext == null) {
+                // 防御：正常情况下 BaseTravelGraphAgent 已初始化，这里兜底
+                reactContext = SubAgentReActContextVO.builder()
+                        .orchestratorPlan(orchestratorPlan)
+                        .turns(new ArrayList<>())
+                        .build();
             }
 
-            PlanDetailVO plan = plannerService.doSubAgentPlan(myPlan, historyWorkDetail, subAgentName);
+            // 传给 LLM 的是结构化记忆：orchestrator 任务 + 前几轮自我 plan/结论，一轮内不丢记忆
+            PlanDetailVO plan = plannerService.doSubAgentPlanReAct(reactContext, subAgentName);
 
             Map<String, Object> resultMap = new HashMap<>();
             resultMap.put(GraphStateKey.ACTION.getKey(), plan.getAction());
@@ -109,6 +117,22 @@ public class SubAgentGraphNode {
             String workerMemory = state.value(GraphStateKey.WORKER_CONCLUSION.getKey(), "");
             String conclusion = workerDetail.getConclusion();
             resultMap.put(GraphStateKey.WORKER_CONCLUSION.getKey(), workerMemory + conclusion);
+
+            // 结构化 ReAct 记忆：append 一条 TurnVO（供 planner 下轮读取，一轮内不丢记忆）
+            SubAgentReActContextVO reactContext = state.value(GraphStateKey.SUB_AGENT_REACT_MEMORY.getKey(), (SubAgentReActContextVO) null);
+            if (reactContext != null) {
+                String traceId = state.value(GraphStateKey.TRACE_ID.getKey(), "");
+                List<TurnVO> turns = reactContext.getTurns();
+                TurnVO turn = TurnVO.builder()
+                        .traceId(traceId)
+                        .agent(subAgentName)
+                        .round(turns.size() + 1)
+                        .plan(planDetail)
+                        .conclusion(conclusion)
+                        .build();
+                turns.add(turn);
+                resultMap.put(GraphStateKey.SUB_AGENT_REACT_MEMORY.getKey(), reactContext);
+            }
 
             AgentMDC.setEventType(AgentEventType.WORKER_OUTPUT.getType());
             AgentMDC.setWorkerConclusion(conclusion);

@@ -44,6 +44,12 @@ public class OrchestratorGraphNode {
             String chatMemory = shortTermMemory.getMemoryByUserIdAndChatId(userId, chatId);
             Integer loopTimes = state.value(GraphStateKey.LOOP_TIMES.getKey(), 0);
 
+            // traceId 透传：从 GraphState 恢复，保证 orchestrator 日志与整条链路关联
+            String traceId = state.value(GraphStateKey.TRACE_ID.getKey(), "");
+            if (traceId != null && !traceId.isBlank()) {
+                AgentMDC.setTraceId(traceId);
+            }
+
             AgentMDC.setEventType(AgentEventType.ORCHESTRATOR_ROUND.getType());
             AgentMDC.setRound(loopTimes);
             log.info("[V3] Orchestrator planner 节点 | 第{}轮调度", loopTimes);
@@ -87,12 +93,13 @@ public class OrchestratorGraphNode {
             String userId = state.value(GraphStateKey.USER_ID.getKey(), "");
             String chatId = state.value(GraphStateKey.CHAT_ID.getKey(), "");
             String subAgentName = state.value(GraphStateKey.SUB_AGENT_NAME.getKey(), "");
+            String traceId = state.value(GraphStateKey.TRACE_ID.getKey(), "");
 
             AgentMDC.setSubAgentName(subAgentName);
             AgentMDC.setEventType(AgentEventType.AGENT_INVOKE.getType());
             log.info("[V3] {} 开始执行 | plan={}", baseTravelGraphAgent.name(), planDetail);
 
-            String result = baseTravelGraphAgent.execute(planDetail, userId, chatId, null);
+            String result = baseTravelGraphAgent.execute(planDetail, userId, chatId, traceId, null);
             shortTermMemory.addAgentTalking(userId, chatId, subAgentName + " 执行完成，结论：" + result);
 
             AgentMDC.setEventType(AgentEventType.AGENT_FINISH.getType());

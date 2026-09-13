@@ -5,24 +5,18 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.util.List;
-
 /**
- * 一轮用户请求（v3 结构化短期记忆的外层单元）。
+ * 一轮用户请求（第一套：多轮对话级短期记忆）。
  *
- * <p>对应 SillyTavern 里的「一轮」：用户说一句话 → Agent 完整执行一次。
- * 因为多 Agent 编排是「1:N」展开（一次请求 → N 个 subAgent 执行），
- * 所以一轮里含 {@code turns}（所有 agent 执行）而不是一对一平铺。
+ * <p>对应 SillyTavern 里的「一轮」：用户说一句话 → Agent 完整执行一次 → 最终回复。
+ * 只记录「用户说了什么 + 最终回了什么」，不含 agent 执行细节（执行细节属于第二套执行轨迹）。
  *
- * <p>示例：
- * <pre>
- * {
- *   "round": 1,
- *   "userInput": "我要去广州3天",
- *   "turns": [ {agent, plan, conclusion}, ... ],
- *   "finalReply": "已为你规划广州3天行程..."
- * }
- * </pre>
+ * <p>三种结束方式都会写入 finalReply：
+ * <ul>
+ *   <li>finish —— 正常规划完成后的总结</li>
+ *   <li>clarify —— 需要用户补充信息的话术</li>
+ *   <li>overMaxLoopTimes —— 超轮次的强制总结</li>
+ * </ul>
  */
 @Data
 @Builder
@@ -36,9 +30,6 @@ public class RoundVO {
     /** 用户这一轮说了什么 */
     private String userInput;
 
-    /** 这次请求触发的所有 agent 执行 */
-    private List<TurnVO> turns;
-
-    /** 最终回复给用户的话（一次请求收尾时写入） */
+    /** 最终回复给用户的话（收尾时写入，覆盖三种结束方式） */
     private String finalReply;
 }

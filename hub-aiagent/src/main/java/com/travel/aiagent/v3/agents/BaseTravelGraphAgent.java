@@ -5,11 +5,13 @@ import com.alibaba.cloud.ai.graph.OverAllState;
 import com.alibaba.fastjson2.JSON;
 import com.travel.aiagent.common.constant.GraphStateKey;
 import com.travel.aiagent.common.memory.ShortTermMemory;
+import com.travel.aiagent.common.memory.SubAgentReActContextVO;
 import com.travel.aiagent.v3.ITravelGraphAgent;
 import com.travel.aiagent.v3.graph.SubAgentGraph;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -34,7 +36,7 @@ public abstract class BaseTravelGraphAgent implements ITravelGraphAgent {
     public abstract String description();
 
     @Override
-    public String execute(String task, String userId, String chatId, Consumer<String> progress) {
+    public String execute(String task, String userId, String chatId, String traceId, Consumer<String> progress) {
 
         Map<String, Object> init = new HashMap<>();
         init.put(GraphStateKey.USER_ID.getKey(), userId);
@@ -42,6 +44,12 @@ public abstract class BaseTravelGraphAgent implements ITravelGraphAgent {
         init.put(GraphStateKey.LOOP_TIMES.getKey(), 0);
         init.put(GraphStateKey.SUB_AGENT_NAME.getKey(), name());
         init.put(GraphStateKey.ORCHESTRATOR_AGENT_PLAN_DETAIL.getKey(), task);
+        init.put(GraphStateKey.TRACE_ID.getKey(), traceId);
+        // 初始化子 Agent 的 ReAct 记忆：orchestratorPlan 固定 + turns 空列表
+        init.put(GraphStateKey.SUB_AGENT_REACT_MEMORY.getKey(), SubAgentReActContextVO.builder()
+                .orchestratorPlan(task)
+                .turns(new ArrayList<>())
+                .build());
 
         log.info("[V3-Sub] {} 开始执行上游task {} ", name(), task);
         Optional<OverAllState> result = subGraph.invoke(init);
