@@ -4,7 +4,7 @@ import com.alibaba.cloud.ai.graph.action.AsyncNodeAction;
 import com.alibaba.cloud.ai.graph.action.NodeAction;
 import com.travel.aiagent.common.constant.AgentEventType;
 import com.travel.aiagent.common.constant.GraphStateKey;
-import com.travel.aiagent.common.core.planner.DeepSeekPlannerService;
+import com.travel.aiagent.common.core.planner.PlannerService;
 import com.travel.aiagent.common.domain.PlanDetailVO;
 import com.travel.aiagent.common.domain.prompt.SystemPrompt;
 import com.travel.aiagent.common.memory.ShortTermMemory;
@@ -25,7 +25,7 @@ import java.util.Map;
 public class OrchestratorGraphNode {
 
     @Resource
-    private DeepSeekPlannerService plannerService;
+    private PlannerService plannerService;
 
     @Resource
     private Map<String, BaseTravelGraphAgent> subGraphAgentsMap;
@@ -43,13 +43,12 @@ public class OrchestratorGraphNode {
             String chatId = state.value(GraphStateKey.CHAT_ID.getKey(), "");
             String chatMemory = shortTermMemory.getMemoryByUserIdAndChatId(userId, chatId);
             Integer loopTimes = state.value(GraphStateKey.LOOP_TIMES.getKey(), 0);
-
-            // traceId 透传：从 GraphState 恢复，保证 orchestrator 日志与整条链路关联
             String traceId = state.value(GraphStateKey.TRACE_ID.getKey(), "");
+
+            // 从 Graph State 恢复前端传入的 traceId，跨线程穿透，保证 LLM 调用日志能关联
             if (traceId != null && !traceId.isBlank()) {
                 AgentMDC.setTraceId(traceId);
             }
-
             AgentMDC.setEventType(AgentEventType.ORCHESTRATOR_ROUND.getType());
             AgentMDC.setRound(loopTimes);
             log.info("[V3] Orchestrator planner 节点 | 第{}轮调度", loopTimes);

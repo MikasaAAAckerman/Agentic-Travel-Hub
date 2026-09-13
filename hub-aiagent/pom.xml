@@ -51,6 +51,11 @@
             <groupId>org.springframework.ai</groupId>
             <artifactId>spring-ai-starter-mcp-client-webflux</artifactId>
         </dependency>
+        <!-- PGVector 向量数据库（长期记忆 RAG） -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-starter-vector-store-pgvector</artifactId>
+        </dependency>
 
         <!-- ================================== Spring boot相关 ================================== -->
         <!-- Spring断路器 -->

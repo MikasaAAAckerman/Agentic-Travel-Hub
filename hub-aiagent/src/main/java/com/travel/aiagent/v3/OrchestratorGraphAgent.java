@@ -14,6 +14,7 @@ import reactor.core.publisher.Flux;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 @Slf4j
@@ -48,21 +49,32 @@ public class OrchestratorGraphAgent {
 
         // 用 AtomicReference 拿最后一帧的结论
         AtomicReference<String> finalConclusion = new AtomicReference<>("抱歉，规划未完成~");
+        // clarify（需要用户补充信息）时，规划尚未完成，不展示"最终规划完成"
+        AtomicBoolean isClarify = new AtomicBoolean(false);
 
         return compiledGraph.stream(init)
-                .map(output -> formatProgress(output, finalConclusion))
+                .map(output -> formatProgress(output, finalConclusion, isClarify))
                 .filter(s -> !s.isEmpty())
-                .concatWith(Flux.defer(() ->
-                        Flux.just("\n🎉 最终规划完成：\n" + finalConclusion.get())))
+                .concatWith(Flux.defer(() -> {
+                    if (isClarify.get()) {
+                        return Flux.empty();
+                    }
+                    return Flux.just("\n🎉 最终规划完成：\n" + finalConclusion.get());
+                }))
                 // 收尾：无论 finish / clarify / overMaxLoopTimes 哪种结束，都写最终回复
                 .doFinally(sig -> roundMemory.finishRound(userId, chatId, finalConclusion.get()));
     }
 
     /** 把 NodeOutput 转成人话进度 */
-    private String formatProgress(NodeOutput output, AtomicReference<String> conclusionHolder) {
+    private String formatProgress(NodeOutput output, AtomicReference<String> conclusionHolder, AtomicBoolean clarifyFlag) {
         String node = output.node();
         OverAllState state = output.state();
         if (state == null) return "";
+
+        // 走走 clarify 节点即说明需要用户补充信息，标记后结尾不再展示"最终规划完成"
+        if ("clarify".equals(node)) {
+            clarifyFlag.set(true);
+        }
 
         String action = state.value(GraphStateKey.ACTION.getKey(), "");
         String subAgentName = state.value(GraphStateKey.SUB_AGENT_NAME.getKey(), "");

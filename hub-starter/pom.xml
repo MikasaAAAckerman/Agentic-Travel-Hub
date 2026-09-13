@@ -15,12 +15,6 @@
 
     <dependencies>
 
-<!--        <dependency>-->
-<!--            <groupId>org.example</groupId>-->
-<!--            <artifactId>hub-agents</artifactId>-->
-<!--            <version>${project.version}</version>-->
-<!--        </dependency>-->
-
         <dependency>
             <groupId>org.example</groupId>
             <artifactId>hub-aiagent</artifactId>
@@ -61,6 +55,13 @@
             <artifactId>opentelemetry-exporter-otlp</artifactId>
         </dependency>
 
+        <!-- 测试相关 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
     </dependencies>
 
     <build>
@@ -69,8 +70,8 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <configuration>
-                    <mainClass>HubStarterApplication</mainClass>
-                    <skip>true</skip>
+                    <mainClass>com.travel.starter.HubStarterApplication</mainClass>
+                    <skip>false</skip>
                 </configuration>
             </plugin>
         </plugins>

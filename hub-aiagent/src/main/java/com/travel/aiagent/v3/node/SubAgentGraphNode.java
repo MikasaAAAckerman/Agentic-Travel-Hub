@@ -5,8 +5,8 @@ import com.alibaba.cloud.ai.graph.action.NodeAction;
 import com.travel.aiagent.common.constant.AgentEventType;
 import com.travel.aiagent.common.constant.GraphStateKey;
 import com.travel.aiagent.common.constant.PlanActionEnum;
-import com.travel.aiagent.common.core.planner.DeepSeekPlannerService;
-import com.travel.aiagent.common.core.worker.QwenWorkerService;
+import com.travel.aiagent.common.core.planner.PlannerService;
+import com.travel.aiagent.common.core.worker.WorkerService;
 import com.travel.aiagent.common.domain.PlanDetailVO;
 import com.travel.aiagent.common.domain.WorkDetailVO;
 import com.travel.aiagent.common.memory.ShortTermMemory;
@@ -36,10 +36,10 @@ import java.util.Map;
 public class SubAgentGraphNode {
 
     @Resource
-    private DeepSeekPlannerService plannerService;
+    private PlannerService plannerService;
 
     @Resource
-    private QwenWorkerService workerService;
+    private WorkerService workerService;
 
     @Resource
     private ShortTermMemory shortTermMemory;

@@ -6,6 +6,8 @@ import com.travel.aiagent.common.domain.PlanDetailVO;
 import com.travel.aiagent.common.domain.WorkDetailVO;
 import com.travel.aiagent.common.domain.prompt.SystemPrompt;
 import com.travel.aiagent.common.utils.AgentMDC;
+import com.travel.aiagent.common.core.rag.ToolRagChannel;
+import com.travel.aiagent.common.service.LlmCallLogService;
 import com.travel.aiagent.common.utils.SpringAIDocumentUtils;
 import com.travel.hubtools.tool.common.IAgentTool;
 import jakarta.annotation.Resource;
@@ -20,7 +22,6 @@ import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.model.tool.ToolCallingChatOptions;
 import org.springframework.ai.rag.Query;
-import org.springframework.ai.rag.retrieval.search.DocumentRetriever;
 import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -34,29 +35,33 @@ import java.util.stream.Collectors;
 
 /**
  * 共享 Worker 服务 —— 被 v0 / v1 / v2 / v3 共用。
+ * 模型通过 workerClient 角色注入，具体绑定哪个模型由 yml 的 agent-model.worker 决定。
  */
 @Service
 @Slf4j
-public class QwenWorkerService {
+public class WorkerService {
 
     @Resource(name = "parallelToolExecutor") // ⚠️ 必须通过名字指定，别拿错了喵！
     private Executor parallelThreadPool;
 
-    private final ChatClient qwenChatClient;
-    private final DocumentRetriever travelDocumentRetriever;
+    private final ChatClient workerClient;
+    private final ToolRagChannel toolRagChannel;
+    private final LlmCallLogService llmCallLogService;
 
     /**
      * toolName → ToolCallback 映射表
      */
     private final Map<String, ToolCallback> globalToolRegistry = new HashMap<>();
 
-    public QwenWorkerService(
-            @Qualifier("qwenChatClient") ChatClient qwenChatClient,
-            @Qualifier("travelDocumentRetriever") DocumentRetriever travelDocumentRetriever,
+    public WorkerService(
+            @Qualifier("workerClient") ChatClient workerClient,
+            ToolRagChannel toolRagChannel,
+            LlmCallLogService llmCallLogService,
             List<IAgentTool> allAgentTools) {
-        log.info("[Worker] 初始化 QwenWorkerService");
-        this.qwenChatClient = qwenChatClient;
-        this.travelDocumentRetriever = travelDocumentRetriever;
+        log.info("[Worker] 初始化 WorkerService | ragChannel={}", toolRagChannel.getChannelName());
+        this.workerClient = workerClient;
+        this.toolRagChannel = toolRagChannel;
+        this.llmCallLogService = llmCallLogService;
         for (IAgentTool toolBean : allAgentTools) {
             ToolCallback[] callbacks = ToolCallbacks.from(toolBean);
             for (ToolCallback cb : callbacks) {
@@ -75,7 +80,7 @@ public class QwenWorkerService {
         log.info("[Worker] doWorkWithRag启动 | plan={}", JSON.toJSONString(planDetailVO));
 
         Query query = new Query(planDetailVO.getPlanDetail());
-        List<Document> toolDocumentList = travelDocumentRetriever.retrieve(query);
+        List<Document> toolDocumentList = toolRagChannel.retrieve(query);
         List<String> toolBeanList = SpringAIDocumentUtils.getToolBeanList(toolDocumentList, SpringAIDocumentUtils.TOOL_NAME_PATTERN);
         Set<ToolCallback> selectedCallbacks = new HashSet<>();
         for (String toolName : toolBeanList) {
@@ -110,21 +115,65 @@ public class QwenWorkerService {
         );
         log.info("[Worker] 构建 RAG Worker Prompt -> {} ", workerPrompt);
 
-        ChatResponse chatResponse = qwenChatClient.prompt()
-                .system(SystemPrompt.TRAVEL_WORKER_SYSTEM_PROMPT)
-                .user(workerPrompt)
-                .toolCallbacks(selectedCallbacks.toArray(new ToolCallback[0]))
-                .call()
-                .chatResponse();
-        String finalAnswer = chatResponse.getResult().getOutput().getText();
-        WorkDetailVO workDetailVO = new WorkDetailVO(true, finalAnswer);
+        long startTime = System.currentTimeMillis();
+        boolean success = true;
+        String errorMessage = null;
+        String finalAnswer = null;
 
-        AgentMDC.setEventType(AgentEventType.WORKER_OUTPUT.getType());
-        AgentMDC.setWorkerConclusion(finalAnswer);
-        log.info("[Worker] RAG任务执行完成 | success={} | conclusion={}", workDetailVO.isSuccess(), finalAnswer);
+        try {
+            ChatResponse chatResponse = workerClient.prompt()
+                    .system(SystemPrompt.TRAVEL_WORKER_SYSTEM_PROMPT)
+                    .user(workerPrompt)
+                    .toolCallbacks(selectedCallbacks.toArray(new ToolCallback[0]))
+                    .call()
+                    .chatResponse();
+            finalAnswer = chatResponse.getResult().getOutput().getText();
 
-        AgentMDC.clearContentContext();
-        return workDetailVO;
+            WorkDetailVO workDetailVO = new WorkDetailVO(true, finalAnswer);
+
+            AgentMDC.setEventType(AgentEventType.WORKER_OUTPUT.getType());
+            AgentMDC.setWorkerConclusion(finalAnswer);
+            log.info("[Worker] RAG任务执行完成 | success={} | conclusion={}", workDetailVO.isSuccess(), finalAnswer);
+
+            // 记录日志
+            long duration = System.currentTimeMillis() - startTime;
+            llmCallLogService.recordWorkerCall(
+                    "Worker",
+                    "v3",
+                    SystemPrompt.TRAVEL_WORKER_SYSTEM_PROMPT,
+                    workerPrompt,
+                    finalAnswer,
+                    JSON.toJSONString(toolBeanList),
+                    null,  // TODO: 记录工具执行结果
+                    duration,
+                    true,
+                    null
+            );
+
+            AgentMDC.clearContentContext();
+            return workDetailVO;
+        } catch (Exception e) {
+            success = false;
+            errorMessage = e.getMessage();
+            log.error("[Worker] RAG任务执行失败", e);
+
+            // 记录失败日志
+            long duration = System.currentTimeMillis() - startTime;
+            llmCallLogService.recordWorkerCall(
+                    "Worker",
+                    "v3",
+                    SystemPrompt.TRAVEL_WORKER_SYSTEM_PROMPT,
+                    workerPrompt,
+                    null,
+                    JSON.toJSONString(toolBeanList),
+                    null,
+                    duration,
+                    false,
+                    errorMessage
+            );
+
+            throw e;
+        }
     }
 
 
@@ -143,7 +192,7 @@ public class QwenWorkerService {
         }
         Query query = new Query(planDetailVO.getPlanDetail());
 
-        List<Document> toolDocumentList = travelDocumentRetriever.retrieve(query);
+        List<Document> toolDocumentList = toolRagChannel.retrieve(query);
         List<String> toolBeanList = SpringAIDocumentUtils.getToolBeanList(toolDocumentList, SpringAIDocumentUtils.TOOL_NAME_PATTERN);
         Set<ToolCallback> selectedCallbacks = new HashSet<>();
         for (String toolName : toolBeanList) {
@@ -166,7 +215,7 @@ public class QwenWorkerService {
                 .build();
 
         // 将配置了工具不许自动执行的option挂载给chatClient
-        ChatResponse chatResponse = qwenChatClient.prompt()
+        ChatResponse chatResponse = workerClient.prompt()
                 .system(SystemPrompt.TRAVEL_WORKER_SYSTEM_PROMPT) //
                 .user("执行计划：" + planDetailVO.getPlanDetail())
                 .options(chatOptions)   // 将关闭工具自动执行的Option注入进来
@@ -228,7 +277,7 @@ public class QwenWorkerService {
                             .build()
             );
             log.info("[Worker] 开始进行finalResult总结 | message={}", JSON.toJSON(JSON.toJSONString(messages)));
-            ChatResponse finalResponse = qwenChatClient.prompt()
+            ChatResponse finalResponse = workerClient.prompt()
                     .system(SystemPrompt.WORKER_SUMMARY_SYSTEM_PROMPT)
                     .messages(messages)
                     .options(summaryOptions)
