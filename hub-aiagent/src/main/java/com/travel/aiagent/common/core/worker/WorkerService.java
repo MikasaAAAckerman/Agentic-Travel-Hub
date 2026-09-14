@@ -265,6 +265,11 @@ public class WorkerService {
                     })
                     .collect(Collectors.toList());
 
+            // C：工具失败信号硬化 —— 统计是否有工具真正成功（返回非失败内容）
+            // 之前 success 恒为 true，导致「搜索失败」被当成正常结果，planner 误以为还能再查到数据
+            boolean anyToolSucceeded = results.stream()
+                    .anyMatch(r -> !isToolResultFailed(r.responseData()));
+
             // 5. 汇总推理（不带 toolCallbacks，告诉 Qwen 只总结别调工具）
             ChatOptions summaryOptions = ToolCallingChatOptions.builder()
                     .internalToolExecutionEnabled(false)
@@ -285,7 +290,7 @@ public class WorkerService {
                     .chatResponse();
 
             String finalAnswer = finalResponse.getResult().getOutput().getText();
-            WorkDetailVO workDetailVO = new WorkDetailVO(true, finalAnswer);
+            WorkDetailVO workDetailVO = new WorkDetailVO(anyToolSucceeded, finalAnswer);
 
             AgentMDC.setEventType(AgentEventType.WORKER_OUTPUT.getType());
             AgentMDC.setWorkerConclusion(finalAnswer);
@@ -302,6 +307,32 @@ public class WorkerService {
         log.info("[Worker] 无工具调用，直接返回LLM回复 | conclusion={}", directAnswer);
         AgentMDC.clearContentContext();
         return new WorkDetailVO(true, directAnswer);
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // C：工具失败信号硬化
+    // 工具返回失败文本/空结果时，判定为失败（不再靠 prompt 关键词让 LLM 自己猜）
+    // ═══════════════════════════════════════════════════════════
+
+    /** 工具失败信号关键词（覆盖 Tavily「搜索失败，未能获取到结果」等兜底文案） */
+    private static final List<String> TOOL_FAILURE_KEYWORDS = List.of(
+            "搜索失败", "未能获取", "无法获取", "工具异常", "工具未注册", "工具执行超时",
+            "QPS", "访问限制", "抱歉", "超时", "未找到", "无结果", "失败", "错误"
+    );
+
+    /**
+     * 判断工具返回结果是否为失败（空结果也算失败）。
+     */
+    private static boolean isToolResultFailed(String result) {
+        if (result == null || result.isBlank()) {
+            return true;
+        }
+        for (String keyword : TOOL_FAILURE_KEYWORDS) {
+            if (result.contains(keyword)) {
+                return true;
+            }
+        }
+        return false;
     }
 
 

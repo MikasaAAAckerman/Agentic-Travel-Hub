@@ -67,6 +67,32 @@ public class RoundMemory {
     }
 
     /**
+     * 记录当前轮 orchestrator 派发的 subAgent 执行结果（全文）。
+     * 供下一轮 orchestrator planner 读取——避免「不知道自己调用过 subAgent」的失忆、防止重复派发。
+     *
+     * @param agent      哪个 subAgent
+     * @param conclusion 执行结果全文（不摘要，保信息；是否失败由 LLM 自行理解）
+     */
+    public synchronized void recordSubAgentResult(String userId, String chatId, String agent, String conclusion) {
+        String conversationId = getConversationId(userId, chatId);
+        List<RoundVO> rounds = memory.get(conversationId);
+        if (rounds == null || rounds.isEmpty()) {
+            log.warn("[RoundMemory] 记录 subAgent 结果失败：conversationId={} 无进行中的轮次", conversationId);
+            return;
+        }
+        RoundVO last = rounds.get(rounds.size() - 1);
+        if (last.getSubAgentResults() == null) {
+            last.setSubAgentResults(new ArrayList<>());
+        }
+        last.getSubAgentResults().add(SubAgentResultVO.builder()
+                .agent(agent)
+                .conclusion(conclusion)
+                .build());
+        log.info("[RoundMemory] 记录 subAgent 结果 | round={} | agent={} | conclusionLen={}",
+                last.getRound(), agent, conclusion.length());
+    }
+
+    /**
      * 获取该会话全部对话轮次（按 round 升序，返回不可变副本）。
      */
     public synchronized List<RoundVO> getRounds(String userId, String chatId) {

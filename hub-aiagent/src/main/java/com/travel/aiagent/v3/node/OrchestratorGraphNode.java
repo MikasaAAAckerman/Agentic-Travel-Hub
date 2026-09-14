@@ -7,6 +7,9 @@ import com.travel.aiagent.common.constant.GraphStateKey;
 import com.travel.aiagent.common.core.planner.PlannerService;
 import com.travel.aiagent.common.domain.PlanDetailVO;
 import com.travel.aiagent.common.domain.prompt.SystemPrompt;
+import com.travel.aiagent.common.memory.PlannerContextVO;
+import com.travel.aiagent.common.memory.RoundMemory;
+import com.travel.aiagent.common.memory.RoundVO;
 import com.travel.aiagent.common.memory.ShortTermMemory;
 import com.travel.aiagent.common.utils.AgentMDC;
 import com.travel.aiagent.v3.agents.BaseTravelGraphAgent;
@@ -15,6 +18,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -33,6 +37,9 @@ public class OrchestratorGraphNode {
     @Resource
     private ShortTermMemory shortTermMemory;
 
+    @Resource
+    private RoundMemory roundMemory;
+
     /**
      * 调度者Agent视角中，将用户输入转为计划的node
      */
@@ -41,7 +48,6 @@ public class OrchestratorGraphNode {
             String userInput = state.value(GraphStateKey.USER_INPUT.getKey(), "");
             String userId = state.value(GraphStateKey.USER_ID.getKey(), "");
             String chatId = state.value(GraphStateKey.CHAT_ID.getKey(), "");
-            String chatMemory = shortTermMemory.getMemoryByUserIdAndChatId(userId, chatId);
             Integer loopTimes = state.value(GraphStateKey.LOOP_TIMES.getKey(), 0);
             String traceId = state.value(GraphStateKey.TRACE_ID.getKey(), "");
 
@@ -58,7 +64,16 @@ public class OrchestratorGraphNode {
                 subAgentDescriptionBuilder.append(key + ": " + subGraphAgentsMap.get(key).description() + ";\n");
             }
             String systemPrompt = SystemPrompt.buildOrchestratorSystemPrompt(subAgentDescriptionBuilder.toString());
-            PlanDetailVO planDetailVO = plannerService.doOrchestratorAgentPlan(userInput, chatMemory, systemPrompt);
+
+            // 第一套对话级记忆：读取结构化轮次（跨请求多轮对话），序列化成 JSON 给 planner
+            List<RoundVO> rounds = roundMemory.getRounds(userId, chatId);
+            PlannerContextVO plannerContext = PlannerContextVO.builder()
+                    .userTag(List.of())
+                    .userInput(userInput)
+                    .longTermHistory(List.of())
+                    .rounds(rounds)
+                    .build();
+            PlanDetailVO planDetailVO = plannerService.doOrchestratorAgentPlan(plannerContext, systemPrompt);
 
             // 获取计划后的结果，扔进GraphState中，交给Edge判断进到哪个节点
             Map<String, Object> resultMap = new HashMap<>();
@@ -99,6 +114,9 @@ public class OrchestratorGraphNode {
             log.info("[V3] {} 开始执行 | plan={}", baseTravelGraphAgent.name(), planDetail);
 
             String result = baseTravelGraphAgent.execute(planDetail, userId, chatId, traceId, null);
+            // 写入 orchestrator 记忆（RoundMemory 当前轮）：下轮 planner 能看到本轮 subAgent 的执行结果
+            roundMemory.recordSubAgentResult(userId, chatId, subAgentName, result);
+            // 旧轨 String 记忆保留（overMaxLoopTimes 收尾仍依赖；清理时机由主人定）
             shortTermMemory.addAgentTalking(userId, chatId, subAgentName + " 执行完成，结论：" + result);
 
             AgentMDC.setEventType(AgentEventType.AGENT_FINISH.getType());

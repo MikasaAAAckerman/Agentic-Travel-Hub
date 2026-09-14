@@ -169,7 +169,20 @@ public class SubAgentGraphNode {
                 delta.put(GraphStateKey.ORCHESTRATOR_AGENT_CONCLUSION.getKey(),
                         "任务超过最大执行轮次，未能获取有效结果，建议简化需求后重试");
             } else {
-                delta.put(GraphStateKey.ORCHESTRATOR_AGENT_CONCLUSION.getKey(), workerConclusion);
+                // D：overMaxLoop 收尾质量 —— 用结构化 turns 汇总（每轮 plan + conclusion），而非粗糙拼接 WORKER_CONCLUSION
+                SubAgentReActContextVO reactContext = state.value(GraphStateKey.SUB_AGENT_REACT_MEMORY.getKey(), (SubAgentReActContextVO) null);
+                if (reactContext != null && !reactContext.getTurns().isEmpty()) {
+                    StringBuilder sb = new StringBuilder();
+                    sb.append("【子任务执行达到轮次上限，各轮执行汇总如下】\n");
+                    for (TurnVO turn : reactContext.getTurns()) {
+                        sb.append("第 ").append(turn.getRound()).append(" 轮 [").append(turn.getAgent()).append("]\n");
+                        sb.append("  计划：").append(turn.getPlan()).append("\n");
+                        sb.append("  结果：").append(turn.getConclusion()).append("\n");
+                    }
+                    delta.put(GraphStateKey.ORCHESTRATOR_AGENT_CONCLUSION.getKey(), sb.toString());
+                } else {
+                    delta.put(GraphStateKey.ORCHESTRATOR_AGENT_CONCLUSION.getKey(), workerConclusion);
+                }
             }
             return delta;
         };
