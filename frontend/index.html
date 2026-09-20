@@ -178,6 +178,16 @@
             transition: all 0.3s; flex-shrink: 0;
         }
         .send-btn:hover { background: var(--vermilion); }
+        .stop-btn {
+            background: var(--vermilion); border: none; color: #f7f3ed;
+            font-family: 'Shippori Mincho', serif; font-size: 12px;
+            letter-spacing: 4px; padding: 12px 28px; cursor: pointer;
+            transition: all 0.3s; flex-shrink: 0;
+        }
+        .stop-btn:hover:not(:disabled) { background: #9a2a2f; }
+        .stop-btn:disabled {
+            background: #e8ddd0; color: #a89880; cursor: not-allowed;
+        }
         .footer-text {
             font-size: 9px; color: var(--ink-fade);
             text-align: center; margin-top: 8px; letter-spacing: 2px;
@@ -477,6 +487,7 @@
             <div class="endpoint-badge" id="endpoint-badge">/v3</div>
             <input type="text" class="chat-input" id="user-input" placeholder="请输入目的地、日期、想要了解的内容…">
             <button class="send-btn" id="send-btn">发 送</button>
+            <button class="stop-btn" id="stop-btn" disabled>停 止</button>
         </div>
         <div class="footer-text">
             <span id="footer-engine">v3 · OrchestratorGraphAgent</span>
@@ -547,7 +558,14 @@
     const chatContainer = document.getElementById('chat-container');
     const userInput = document.getElementById('user-input');
     const sendBtn = document.getElementById('send-btn');
+    const stopBtn = document.getElementById('stop-btn');
     const endpointBadge = document.getElementById('endpoint-badge');
+
+    // ── 停止功能状态：当前进行中的 SSE 流 ──
+    let currentEventSource = null;
+    let isStreaming = false;
+    let currentResponseWrapper = null;
+    let currentAgentName = null;
 
     document.querySelectorAll('.version-card').forEach(card => {
         card.addEventListener('click', () => {
@@ -634,6 +652,13 @@
         const agentName = v.engine;
         const sseUrl = `http://localhost:8080${v.endpoint}?prompt=${encodeURIComponent(prompt)}&sessionId=hongdou_master&chatId=session_001&traceId=${SESSION_TRACE_ID}`;
         const eventSource = new EventSource(sseUrl);
+        // 停止功能：保存当前流上下文（停止按钮 / onerror 都要用）
+        currentEventSource = eventSource;
+        currentResponseWrapper = responseWrapper;
+        currentAgentName = agentName;
+        isStreaming = true;
+        // 停止接口只对 v3（可协作式取消）生效；v0/v1/v2 同步阻塞模型不做
+        stopBtn.disabled = currentVersion !== 'v3';
         eventSource.onmessage = (event) => {
             const data = event.data;
             const formattedData = data.replace(/\n/g, '<br>');
@@ -645,12 +670,40 @@
         };
         eventSource.onerror = () => {
             eventSource.close();
+            isStreaming = false;
+            stopBtn.disabled = true;
             // 不清 typewriterTarget，让打字机自然排空 buffer
             // SSE 结束后添加反馈按钮
-            setTimeout(() => {
-                appendFeedbackBar(responseWrapper, traceId, agentName);
-            }, 500);
+            finalizeStream(responseWrapper, traceId, agentName);
         };
+    }
+
+    /** SSE 收尾公共逻辑（正常结束 / 用户停止都走这里）：追加反馈按钮 */
+    function finalizeStream(responseWrapper, traceId, agentName) {
+        setTimeout(() => {
+            appendFeedbackBar(responseWrapper, traceId, agentName);
+        }, 500);
+    }
+
+    /** 用户点「停止」：通知后端协作式取消 + 关闭前端 SSE */
+    async function stopStreaming() {
+        if (!isStreaming) return;
+        isStreaming = false;
+        stopBtn.disabled = true;
+        try {
+            await fetch(`http://localhost:8080/api/aiagent/chat/stop?traceId=${SESSION_TRACE_ID}`, { method: 'POST' });
+        } catch (e) {
+            console.error('停止请求失败:', e);
+        }
+        if (currentEventSource) currentEventSource.close();
+        // 清空打字机残余，立即展示停止状态（后端 dispose 后不会再来新内容）
+        typewriterBuffer = [];
+        typewriterRunning = false;
+        appendSystemLog('⏹ 已停止本次规划');
+        if (currentResponseWrapper) {
+            finalizeStream(currentResponseWrapper, SESSION_TRACE_ID, currentAgentName);
+        }
+        currentEventSource = null;
     }
 
     function appendMessage(role, text, id = '') {
@@ -673,6 +726,7 @@
     }
 
     sendBtn.addEventListener('click', handleSend);
+    stopBtn.addEventListener('click', stopStreaming);
     userInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') handleSend(); });
 
     // ── 反馈功能 ──

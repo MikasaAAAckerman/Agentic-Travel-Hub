@@ -2,19 +2,24 @@ package com.travel.starter.controller;
 
 import com.travel.aiagent.common.memory.ShortTermMemory;
 import com.travel.aiagent.common.router.IntentRecognitionRouter;
+import com.travel.aiagent.common.session.AgentSession;
+import com.travel.aiagent.common.session.AgentSessionRegistry;
 import com.travel.aiagent.common.utils.AgentMDC;
 import com.travel.aiagent.v0.DualCoreReactEngine;
 import com.travel.aiagent.v1.GraphReactEngine;
 import com.travel.aiagent.v2.OrchestratorAgent;
 import com.travel.aiagent.v3.OrchestratorGraphAgent;
+import com.travel.starter.vo.ServiceResponse;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Sinks;
 import reactor.core.scheduler.Schedulers;
@@ -55,6 +60,9 @@ public class TravelAgentController {
 
     @Resource
     private ChatClient assistantClient;
+
+    @Resource
+    private AgentSessionRegistry agentSessionRegistry;
 
     // ═══════════════════════════════════════
     // v0：while-if-else ReAct
@@ -192,7 +200,7 @@ public class TravelAgentController {
         sink.tryEmitNext("✨ [V3 · Graph Multi-Agent] 两层Graph嵌套，红豆调度专家团队中喵！\n\n");
 
         // 图执行放独立线程，每到一个节点就 tryEmitNext 实时推给前端
-        v3Engine.executeStream(prompt, sessionId, chatId, traceId)
+        Disposable disposable = v3Engine.executeStream(prompt, sessionId, chatId, traceId)
                 .doOnNext(sink::tryEmitNext)
                 .doOnComplete(sink::tryEmitComplete)
                 .doOnError(e -> {
@@ -203,7 +211,42 @@ public class TravelAgentController {
                 .subscribeOn(Schedulers.boundedElastic())
                 .subscribe();
 
+        // 注册进行中会话：traceId → (Disposable + sink)，供「停止」接口定位中断
+        agentSessionRegistry.register(traceId, disposable, sink);
+        log.info("[V3] 会话已注册，可停止 | traceId={}", traceId);
+
         return sink.asFlux();
+    }
+
+    // ═══════════════════════════════════════
+    // v3：用户停止（协作式取消）
+    // ═══════════════════════════════════════
+
+    /**
+     * 停止一个进行中的 v3 会话。
+     *
+     * <p>协作式取消三层机制：
+     * <ol>
+     *   <li>置 cancelled 标志 → 各 node 检查点读到后优雅走 finish 退出</li>
+     *   <li>dispose() 图执行订阅 → 不再启动新的 node / LLM / 工具</li>
+     *   <li>sink.tryEmitComplete() → 前端 SSE 立即关闭</li>
+     * </ol>
+     *
+     * <p>幂等：traceId 不存在（已停止/已结束）时直接返回 success。
+     * 对 v0/v1/v2（同步阻塞模型）的 traceId 天然是 no-op。
+     */
+    @PostMapping(value = "/chat/stop")
+    public ServiceResponse<Void> stop(@RequestParam("traceId") String traceId) {
+        AgentSession session = agentSessionRegistry.remove(traceId);
+        if (session == null) {
+            log.info("[V3] 停止请求：会话不存在或已结束，忽略 | traceId={}", traceId);
+            return ServiceResponse.success();
+        }
+        session.getCancelled().set(true);
+        session.getSubscription().dispose();
+        session.getSink().tryEmitComplete();
+        log.info("[V3] 用户停止会话 | traceId={}", traceId);
+        return ServiceResponse.success();
     }
 
     // ═══════════════════════════════════════

@@ -48,6 +48,9 @@ public class AgentMetrics {
     /** CLARIFY 事件次数 → Grafana "CLARIFY 次数" 面板，说明 Planner 需要用户补充信息 */
     private final Counter clarifyTotal;
 
+    /** 用户手动停止会话次数 → Grafana "停止次数" 面板，配合会话总数可评估用户满意度 */
+    private final Counter agentStopTotal;
+
     // ═══════════════════════════════════════════════════════════
     // Timer 指标（统计耗时分布，Grafana TimeSeries 面板展示 P50/P95/P99）
     // ═══════════════════════════════════════════════════════════
@@ -100,6 +103,10 @@ public class AgentMetrics {
 
         this.clarifyTotal = Counter.builder("agent.clarify.total")
                 .description("CLARIFY 事件次数")
+                .register(registry);
+
+        this.agentStopTotal = Counter.builder("agent.cancel.total")
+                .description("用户手动停止会话次数")
                 .register(registry);
 
         // Timer - agentDuration 改为懒加载（见 recordAgentFinish 中按需 register，带 agentName tag）
@@ -180,5 +187,10 @@ public class AgentMetrics {
     /** 记录 CLARIFY 事件 */
     public void recordClarify() {
         clarifyTotal.increment();
+    }
+
+    /** 记录用户手动停止会话 */
+    public void recordAgentStop() {
+        agentStopTotal.increment();
     }
 }

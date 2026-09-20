@@ -12,6 +12,7 @@ import com.travel.aiagent.common.domain.WorkDetailVO;
 import com.travel.aiagent.common.memory.ShortTermMemory;
 import com.travel.aiagent.common.memory.SubAgentReActContextVO;
 import com.travel.aiagent.common.memory.TurnVO;
+import com.travel.aiagent.common.session.AgentSessionRegistry;
 import com.travel.aiagent.common.utils.AgentMDC;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -44,6 +45,9 @@ public class SubAgentGraphNode {
     @Resource
     private ShortTermMemory shortTermMemory;
 
+    @Resource
+    private AgentSessionRegistry agentSessionRegistry;
+
     /**
      * 子Agent视角中，将当前任务再次进行任务规划的node
      */
@@ -64,6 +68,17 @@ public class SubAgentGraphNode {
             AgentMDC.setSubAgentName(subAgentName);
             AgentMDC.setRound(loopTimes);
             AgentMDC.setEventType(AgentEventType.ORCHESTRATOR_ROUND.getType());
+
+            // 停止检查点③（最关键）：子图是 invoke() 同步阻塞，dispose 进不来，
+            // 用户停止后靠这里的检查点让子图下一轮直接 FINISH 退出，不等完整子图跑完
+            if (agentSessionRegistry.isCancelled(traceId)) {
+                log.info("[V3-Sub] {} 会话已被用户停止，子图 planner 直接退出 | traceId={}", subAgentName, traceId);
+                return Map.of(
+                        GraphStateKey.ACTION.getKey(), PlanActionEnum.FINISH.getType(),
+                        GraphStateKey.ORCHESTRATOR_AGENT_CONCLUSION.getKey(), "（用户已停止）"
+                );
+            }
+
             log.info("[V3-Sub] {} planner 节点 | 第{}轮", subAgentName, loopTimes);
 
             // 读取子 Agent 的 ReAct 记忆（orchestratorPlan 固定 + turns 累积）
@@ -105,6 +120,14 @@ public class SubAgentGraphNode {
 
             AgentMDC.setSubAgentName(subAgentName);
             AgentMDC.setEventType(AgentEventType.WORKER_INPUT.getType());
+
+            // 停止检查点④：planner 刚返回 TOOL_CALL、worker 即将执行工具的间隙 → 跳过工具调用
+            String traceId = state.value(GraphStateKey.TRACE_ID.getKey(), "");
+            if (agentSessionRegistry.isCancelled(traceId)) {
+                log.info("[V3-Sub] {} 会话已被用户停止，跳过工具执行 | traceId={}", subAgentName, traceId);
+                return Map.of();
+            }
+
             log.info("[V3-Sub] {} 进入 worker 节点 | plan={}", subAgentName, planDetail);
 
             PlanDetailVO planVO = new PlanDetailVO();
@@ -121,7 +144,6 @@ public class SubAgentGraphNode {
             // 结构化 ReAct 记忆：append 一条 TurnVO（供 planner 下轮读取，一轮内不丢记忆）
             SubAgentReActContextVO reactContext = state.value(GraphStateKey.SUB_AGENT_REACT_MEMORY.getKey(), (SubAgentReActContextVO) null);
             if (reactContext != null) {
-                String traceId = state.value(GraphStateKey.TRACE_ID.getKey(), "");
                 List<TurnVO> turns = reactContext.getTurns();
                 TurnVO turn = TurnVO.builder()
                         .traceId(traceId)

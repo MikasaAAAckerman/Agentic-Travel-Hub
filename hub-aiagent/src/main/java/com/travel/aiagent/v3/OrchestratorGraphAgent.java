@@ -6,11 +6,14 @@ import com.alibaba.cloud.ai.graph.OverAllState;
 import com.travel.aiagent.common.constant.GraphStateKey;
 import com.travel.aiagent.common.constant.PlanActionEnum;
 import com.travel.aiagent.common.memory.RoundMemory;
+import com.travel.aiagent.common.metrics.AgentMetrics;
+import com.travel.aiagent.common.session.AgentSessionRegistry;
 import com.travel.aiagent.v3.graph.OrchestratorGraph;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.SignalType;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -25,6 +28,12 @@ public class OrchestratorGraphAgent {
 
     @Resource
     private RoundMemory roundMemory;
+
+    @Resource
+    private AgentSessionRegistry agentSessionRegistry;
+
+    @Resource
+    private AgentMetrics agentMetrics;
 
     public OrchestratorGraphAgent(OrchestratorGraph graph) {
         this.compiledGraph = graph.buildGraph();
@@ -61,8 +70,20 @@ public class OrchestratorGraphAgent {
                     }
                     return Flux.just("\n🎉 最终规划完成：\n" + finalConclusion.get());
                 }))
-                // 收尾：无论 finish / clarify / overMaxLoopTimes 哪种结束，都写最终回复
-                .doFinally(sig -> roundMemory.finishRound(userId, chatId, finalConclusion.get()));
+                // 收尾：无论 finish / clarify / overMaxLoopTimes / CANCEL（用户停止）哪种结束，都写最终回复
+                .doFinally(sig -> {
+                    // 用户停止（stop 接口 dispose / 检查点退出）：不写半截结论，标记「已停止」
+                    boolean cancelled = sig == SignalType.CANCEL || agentSessionRegistry.isCancelled(traceId);
+                    // 兜底清理会话注册（正常/异常/取消都走到，幂等）
+                    agentSessionRegistry.remove(traceId);
+                    if (cancelled) {
+                        log.info("[V3] 会话被用户停止，收尾 | traceId={}", traceId);
+                        roundMemory.finishRound(userId, chatId, "（用户已停止本次规划）");
+                        agentMetrics.recordAgentStop();
+                        return;
+                    }
+                    roundMemory.finishRound(userId, chatId, finalConclusion.get());
+                });
     }
 
     /** 把 NodeOutput 转成人话进度 */

@@ -4,6 +4,7 @@ import com.alibaba.cloud.ai.graph.action.AsyncNodeAction;
 import com.alibaba.cloud.ai.graph.action.NodeAction;
 import com.travel.aiagent.common.constant.AgentEventType;
 import com.travel.aiagent.common.constant.GraphStateKey;
+import com.travel.aiagent.common.constant.PlanActionEnum;
 import com.travel.aiagent.common.core.planner.PlannerService;
 import com.travel.aiagent.common.domain.PlanDetailVO;
 import com.travel.aiagent.common.domain.prompt.SystemPrompt;
@@ -11,6 +12,7 @@ import com.travel.aiagent.common.memory.PlannerContextVO;
 import com.travel.aiagent.common.memory.RoundMemory;
 import com.travel.aiagent.common.memory.RoundVO;
 import com.travel.aiagent.common.memory.ShortTermMemory;
+import com.travel.aiagent.common.session.AgentSessionRegistry;
 import com.travel.aiagent.common.utils.AgentMDC;
 import com.travel.aiagent.v3.agents.BaseTravelGraphAgent;
 import jakarta.annotation.Resource;
@@ -40,6 +42,9 @@ public class OrchestratorGraphNode {
     @Resource
     private RoundMemory roundMemory;
 
+    @Resource
+    private AgentSessionRegistry agentSessionRegistry;
+
     /**
      * 调度者Agent视角中，将用户输入转为计划的node
      */
@@ -57,6 +62,17 @@ public class OrchestratorGraphNode {
             }
             AgentMDC.setEventType(AgentEventType.ORCHESTRATOR_ROUND.getType());
             AgentMDC.setRound(loopTimes);
+
+            // 停止检查点①：用户已点停止 → 不再调 LLM，直接 FINISH 优雅退出（dispose 兜底失效时的双保险）
+            if (agentSessionRegistry.isCancelled(traceId)) {
+                log.info("[V3] 会话已被用户停止，planner 直接退出 | traceId={}", traceId);
+                Map<String, Object> cancelMap = new HashMap<>();
+                cancelMap.put(GraphStateKey.ACTION.getKey(), PlanActionEnum.FINISH.getType());
+                cancelMap.put(GraphStateKey.ORCHESTRATOR_AGENT_CONCLUSION.getKey(), "（用户已停止本次规划）");
+                cancelMap.put(GraphStateKey.LOOP_TIMES.getKey(), loopTimes + 1);
+                return cancelMap;
+            }
+
             log.info("[V3] Orchestrator planner 节点 | 第{}轮调度", loopTimes);
 
             StringBuilder subAgentDescriptionBuilder = new StringBuilder();
@@ -111,6 +127,13 @@ public class OrchestratorGraphNode {
 
             AgentMDC.setSubAgentName(subAgentName);
             AgentMDC.setEventType(AgentEventType.AGENT_INVOKE.getType());
+
+            // 停止检查点②：dispose 与子图启动之间的间隙 → 不派发子任务（避免白跑一轮子图）
+            if (agentSessionRegistry.isCancelled(traceId)) {
+                log.info("[V3] 会话已被用户停止，跳过子任务派发 | traceId={} | subAgent={}", traceId, subAgentName);
+                return Map.of();
+            }
+
             log.info("[V3] {} 开始执行 | plan={}", baseTravelGraphAgent.name(), planDetail);
 
             String result = baseTravelGraphAgent.execute(planDetail, userId, chatId, traceId, null);
