@@ -1,5 +1,8 @@
 package com.travel.aiagent.common.core.rag;
 
+import com.alibaba.fastjson2.JSON;
+import com.alibaba.fastjson2.JSONArray;
+import com.alibaba.fastjson2.JSONObject;
 import com.travel.common.constant.BizException;
 import com.travel.common.constant.ServiceResponseTypeEnum;
 import lombok.extern.slf4j.Slf4j;
@@ -7,9 +10,12 @@ import org.springframework.ai.document.Document;
 import org.springframework.ai.rag.Query;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.RestClient;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -46,9 +52,23 @@ public class LocalToolRagChannel implements ToolRagChannel {
      */
     private static final double SIMILARITY_THRESHOLD = 0.5;
 
+    /**
+     * ES 索引名（工具描述知识库）
+     */
+    private static final String ES_INDEX = "travel_hub_tools";
+
+    /**
+     * ES 地址（带默认值，本地 docker 环境）
+     */
+    @Value("${tool-rag.es-url:http://localhost:9200}")
+    private String esUrl;
+
+    private final RestClient restClient;
+
     public LocalToolRagChannel(VectorStore vectorStore, JdbcTemplate jdbcTemplate) {
         this.vectorStore = vectorStore;
         this.jdbcTemplate = jdbcTemplate;
+        this.restClient = RestClient.builder().build();
         log.info("[ToolRag] 初始化本地多路召回通道");
     }
 
@@ -62,7 +82,9 @@ public class LocalToolRagChannel implements ToolRagChannel {
         log.info("[ToolRag] Dense召回完成 | count={}", denseResults.size());
 
         // 2. Sparse 召回：BM25 全文检索
-        List<Document> sparseResults = sparseRetrieve(queryText);
+//         切换 Sparse 通道：默认 ES（真 BM25 + 中文分词）；想对比 PG 版就换下面那行注释
+        List<Document> sparseResults = sparseRetrieveByES(queryText);
+//        List<Document> sparseResults = sparseRetrieveByPG(queryText);
         log.info("[ToolRag] Sparse召回完成 | count={}", sparseResults.size());
 
         // 3. 合并去重
@@ -103,8 +125,17 @@ public class LocalToolRagChannel implements ToolRagChannel {
     /**
      * Sparse 召回：使用 PostgreSQL 全文检索（模拟 BM25）
      * 使用 ts_rank 进行相关性排序
+     *   ┌─────────────────────────┬─────────────────┬──────────────────────────────────────────────────────┐
+     *   │         BM25 有         │ PG ts_rank 有吗 │                         影响                         │
+     *   ├─────────────────────────┼─────────────────┼──────────────────────────────────────────────────────┤
+     *   │ IDF 逆文档频率          │ ❌ 没有！       │ 「的」「是」和「高迪」「米其林」权重一样——最大的缺陷 │
+     *   ├─────────────────────────┼─────────────────┼──────────────────────────────────────────────────────┤
+     *   │ 文档长度归一化（avgdl） │ ❌ 没有         │ 长文档天然词频高、白拿分                             │
+     *   ├─────────────────────────┼─────────────────┼──────────────────────────────────────────────────────┤
+     *   │ 词频非线性饱和（k₁）    │ ❌ 近似线性     │ 重复出现 10 次的词会过度加分                         │
+     *   └─────────────────────────┴─────────────────┴──────────────────────────────────────────────────────┘
      */
-    private List<Document> sparseRetrieve(String queryText) {
+    private List<Document> sparseRetrieveByPG(String queryText) {
         try {
             // 将查询文本转换为 PostgreSQL 全文检索的 tsquery 格式
             // 例如："北京天气" -> "北京 & 天气"
@@ -136,6 +167,52 @@ public class LocalToolRagChannel implements ToolRagChannel {
                     .collect(Collectors.toList());
         } catch (Exception e) {
             log.error("[ToolRag] Sparse召回异常", e);
+            return Collections.emptyList();
+        }
+    }
+
+    /**
+     * Sparse 召回：使用 Elasticsearch BM25 全文检索（真 BM25 + cjk 中文双字分词）
+     *
+     * <p>调用 ES {@code _search} API：match 查询（默认 OR + 评分排序），
+     * 索引 {@code travel_hub_tools} 使用 cjk 分析器（ES 内置，中文按双字 bigram 切分，
+     * 无需 IK 插件即可中文检索；要更精准的词级切分可后续换 IK）。
+     *
+     * <p>⚠️ 数据一致性：ES 索引目前是 PG 数据的一次性副本，工具描述更新后需同步（双写）。
+     */
+    private List<Document> sparseRetrieveByES(String queryText) {
+        try {
+            String body = JSON.toJSONString(Map.of(
+                    "query", Map.of("match", Map.of("content", queryText)),
+                    "size", SPARSE_TOP_K,
+                    "_source", List.of("id", "content")
+            ));
+
+            String resp = restClient.post()
+                    .uri(esUrl + "/" + ES_INDEX + "/_search")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(body)
+                    .retrieve()
+                    .body(String.class);
+
+            JSONObject root = JSON.parseObject(resp);
+            JSONArray hits = root.getJSONObject("hits").getJSONArray("hits");
+
+            List<Document> docs = new ArrayList<>();
+            for (int i = 0; i < hits.size(); i++) {
+                JSONObject hit = hits.getJSONObject(i);
+                JSONObject source = hit.getJSONObject("_source");
+                double score = hit.getDoubleValue("_score");
+
+                Map<String, Object> metadata = new HashMap<>();
+                metadata.put("source", "bm25_es");
+                metadata.put("rank", score);
+
+                docs.add(new Document(source.getString("id"), source.getString("content"), metadata));
+            }
+            return docs;
+        } catch (Exception e) {
+            log.error("[ToolRag] Sparse(ES) 召回异常 | esUrl={}", esUrl, e);
             return Collections.emptyList();
         }
     }
