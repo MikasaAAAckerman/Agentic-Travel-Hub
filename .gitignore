@@ -65,3 +65,6 @@ package-lock.json
 
 ### 本地临时目录 ###
 temp/
+
+### PDF 知识库文件存储（原件 + 页面图，见 pdf-rag.store-dir） ###
+pdf-store/

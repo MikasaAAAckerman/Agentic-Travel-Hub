@@ -7,6 +7,7 @@ import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.openai.api.OpenAiApi;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
@@ -65,6 +66,23 @@ public class ChatClientConfig {
         String ref = environment.getProperty("agent-model.assistant");
         ChatModel model = createModel(ref);
         log.info("[Config] 辅助功能绑定 -> {}", ref);
+        return ChatClient.builder(model)
+                .defaultAdvisors(new MyChatModelCallAdvisor(model))
+                .build();
+    }
+
+    /**
+     * 视觉模型（PDF 多模态 RAG：页面图文描述生成 + 看图作答）。
+     *
+     * <p>条件装配：未配置 agent-model.vision 时不创建该 bean（PDF 多模态链路自动降级为纯文本）。
+     * 配置示例：agent-model.vision = deepseek.models.deepseek-flash
+     */
+    @Bean("visionClient")
+    @ConditionalOnProperty(name = "agent-model.vision")
+    public ChatClient visionClient() {
+        String ref = environment.getProperty("agent-model.vision");
+        ChatModel model = createModel(ref);
+        log.info("[Config] 视觉模型绑定 -> {}", ref);
         return ChatClient.builder(model)
                 .defaultAdvisors(new MyChatModelCallAdvisor(model))
                 .build();

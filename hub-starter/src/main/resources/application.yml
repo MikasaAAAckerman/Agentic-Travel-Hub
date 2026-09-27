@@ -14,6 +14,12 @@ spring:
   application:
     name: agentic-travel-hub
 
+  # 文件上传（PDF 入库）：Spring Boot 默认仅 1MB，PDF 必须调大
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 50MB
+
   # PostgreSQL 数据源（PGVector 向量数据库）
   datasource:
     url: jdbc:postgresql://localhost:5432/travel_hub
@@ -107,6 +113,14 @@ tool-rag:
 # 想关闭重排：注释掉 model 这一行即可
 tool-rerank:
   model: qwen.models.qwen3.7-text-rerank
+
+# ==================== PDF 多模态 RAG ====================
+# 上传 PDF → 解析分块（带页码/bbox）→ 文本向量 + BM25 → 页面图片（多模态向量）
+pdf-rag:
+  store-dir: pdf-store      # 原件 + 页面图存储目录（相对 user.dir；未来可换 OSS）
+  chunk-size: 800           # 分块目标长度（字符）
+  chunk-overlap: 150        # 相邻块重叠（字符），避免跨块信息断裂
+  page-dpi: 150             # 页面渲染 DPI（多模态 embedding 的图片输入）
 
 # 旅行资料库名称（DashScope 知识库）
 travel-document-retriever-name: "旅行衣食住行资料库"

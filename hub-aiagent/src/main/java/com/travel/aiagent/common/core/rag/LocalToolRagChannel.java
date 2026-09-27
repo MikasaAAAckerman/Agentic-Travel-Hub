@@ -1,272 +1,59 @@
 package com.travel.aiagent.common.core.rag;
 
-import com.alibaba.fastjson2.JSON;
-import com.alibaba.fastjson2.JSONArray;
-import com.alibaba.fastjson2.JSONObject;
-import com.travel.common.constant.BizException;
-import com.travel.common.constant.ServiceResponseTypeEnum;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.rag.Query;
-import org.springframework.ai.vectorstore.SearchRequest;
-import org.springframework.ai.vectorstore.VectorStore;
-import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.http.MediaType;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
-import org.springframework.web.client.RestClient;
 
-import java.util.*;
-import java.util.stream.Collectors;
+import java.util.List;
 
 /**
- * 本地多路召回通道
- * 实现 Dense (PGVector) + Sparse (BM25/全文检索) 双路召回 + 合并去重
+ * 本地多路召回通道（工具知识库）。
+ *
+ * <p>检索流程（Dense + Sparse + 合并去重 + 重排 + 截断）已抽到 {@link HybridRagRetriever}
+ * 公共引擎，本类只负责声明「工具知识库」这个检索源：
+ * <pre>
+ *   filterExpression: type == 'tool_knowledge'
+ *     → 与 LongTermMemory（用户偏好，同表无 type 标记）等其他数据隔离，避免互相污染
+ *   esIndex: travel_hub_tools（cjk 分析器，真 BM25）
+ * </pre>
+ *
+ * <p>对比实验：想用 PG ts_rank 版稀疏召回替换 ES，见
+ * {@link HybridRagRetriever#sparseRetrieveByPG}（改 retrieve 内的调用即可）。
  */
 @Slf4j
 @Component
 @ConditionalOnProperty(name = "tool-rag.channel", havingValue = "local")
 public class LocalToolRagChannel implements ToolRagChannel {
 
-    private final VectorStore vectorStore;
-    private final JdbcTemplate jdbcTemplate;
-
     /**
-     * 工具重排器（可选）：配置了 tool-rerank.model 才有 bean，未配置时 getIfAvailable() 返回 null
+     * 工具知识库检索源配置
      */
-    private final ObjectProvider<ToolReranker> toolRerankerProvider;
+    private static final RagSourceConfig TOOL_SOURCE = new RagSourceConfig(
+            "tool_knowledge",
+            "type == 'tool_knowledge'",
+            "travel_hub_tools",
+            20,   // denseTopK：向量召回候选数
+            20,   // sparseTopK：BM25 召回候选数
+            5,    // finalTopK：重排后最终返回条数
+            0.5   // similarityThreshold：向量相似度阈值
+    );
 
-    /**
-     * 向量召回 TopK
-     */
-    private static final int DENSE_TOP_K = 20;
+    private final HybridRagRetriever hybridRagRetriever;
 
-    /**
-     * BM25 全文检索 TopK
-     */
-    private static final int SPARSE_TOP_K = 20;
-
-    /**
-     * 最终返回的文档数量
-     */
-    private static final int FINAL_TOP_K = 5;
-
-    /**
-     * 向量相似度阈值（低于此值的文档会被过滤）
-     */
-    private static final double SIMILARITY_THRESHOLD = 0.5;
-
-    /**
-     * ES 索引名（工具描述知识库）
-     */
-    private static final String ES_INDEX = "travel_hub_tools";
-
-    /**
-     * ES 地址（带默认值，本地 docker 环境）
-     */
-    @Value("${tool-rag.es-url:http://localhost:9200}")
-    private String esUrl;
-
-    private final RestClient restClient;
-
-    public LocalToolRagChannel(VectorStore vectorStore, JdbcTemplate jdbcTemplate,
-                               ObjectProvider<ToolReranker> toolRerankerProvider) {
-        this.vectorStore = vectorStore;
-        this.jdbcTemplate = jdbcTemplate;
-        this.toolRerankerProvider = toolRerankerProvider;
-        this.restClient = RestClient.builder().build();
+    public LocalToolRagChannel(HybridRagRetriever hybridRagRetriever) {
+        this.hybridRagRetriever = hybridRagRetriever;
         log.info("[ToolRag] 初始化本地多路召回通道");
     }
 
     @Override
     public List<Document> retrieve(Query query) {
-        String queryText = query.text();
-        log.info("[ToolRag] 本地多路召回开始 | query={}", queryText);
-
-        // 1. Dense 召回：PGVector 向量检索
-        List<Document> denseResults = denseRetrieve(queryText);
-        log.info("[ToolRag] Dense召回完成 | count={}", denseResults.size());
-
-        // 2. Sparse 召回：BM25 全文检索
-//         切换 Sparse 通道：默认 ES（真 BM25 + 中文分词）；想对比 PG 版就换下面那行注释
-        List<Document> sparseResults = sparseRetrieveByES(queryText);
-//        List<Document> sparseResults = sparseRetrieveByPG(queryText);
-        log.info("[ToolRag] Sparse召回完成 | count={}", sparseResults.size());
-
-        // 3. 合并去重
-        List<Document> mergedResults = mergeAndDeduplicate(denseResults, sparseResults);
-        log.info("[ToolRag] 合并去重完成 | count={}", mergedResults.size());
-
-        // 3.5 工具重排（配置了 tool-rerank.model 才启用）：Cross-Encoder 对 (query, 候选) 逐对精排
-        ToolReranker toolReranker = toolRerankerProvider.getIfAvailable();
-        if (toolReranker != null) {
-            mergedResults = toolReranker.rerank(queryText, mergedResults);
-            log.info("[ToolRag] 重排完成 | count={}", mergedResults.size());
-        }
-
-        // 4. 截断到最终 TopK
-        if (mergedResults.size() > FINAL_TOP_K) {
-            mergedResults = mergedResults.subList(0, FINAL_TOP_K);
-        }
-
-        log.info("[ToolRag] 本地多路召回完成 | finalCount={}", mergedResults.size());
-        return mergedResults;
+        return hybridRagRetriever.retrieve(query.text(), TOOL_SOURCE);
     }
 
     @Override
     public String getChannelName() {
         return "local";
-    }
-
-    /**
-     * Dense 召回：使用 PGVector 进行向量相似度检索
-     */
-    private List<Document> denseRetrieve(String queryText) {
-        try {
-            SearchRequest searchRequest = SearchRequest.builder()
-                    .query(queryText)
-                    .topK(DENSE_TOP_K)
-                    .similarityThreshold(SIMILARITY_THRESHOLD)
-                    .build();
-            return vectorStore.similaritySearch(searchRequest);
-        } catch (Exception e) {
-            log.error("[ToolRag] Dense召回异常", e);
-            throw new BizException(ServiceResponseTypeEnum.SYSTEM_ERROR);
-        }
-    }
-
-    /**
-     * Sparse 召回：使用 PostgreSQL 全文检索（模拟 BM25）
-     * 使用 ts_rank 进行相关性排序
-     *   ┌─────────────────────────┬─────────────────┬──────────────────────────────────────────────────────┐
-     *   │         BM25 有         │ PG ts_rank 有吗 │                         影响                         │
-     *   ├─────────────────────────┼─────────────────┼──────────────────────────────────────────────────────┤
-     *   │ IDF 逆文档频率          │ ❌ 没有！       │ 「的」「是」和「高迪」「米其林」权重一样——最大的缺陷 │
-     *   ├─────────────────────────┼─────────────────┼──────────────────────────────────────────────────────┤
-     *   │ 文档长度归一化（avgdl） │ ❌ 没有         │ 长文档天然词频高、白拿分                             │
-     *   ├─────────────────────────┼─────────────────┼──────────────────────────────────────────────────────┤
-     *   │ 词频非线性饱和（k₁）    │ ❌ 近似线性     │ 重复出现 10 次的词会过度加分                         │
-     *   └─────────────────────────┴─────────────────┴──────────────────────────────────────────────────────┘
-     */
-    private List<Document> sparseRetrieveByPG(String queryText) {
-        try {
-            // 将查询文本转换为 PostgreSQL 全文检索的 tsquery 格式
-            // 例如："北京天气" -> "北京 & 天气"
-            String tsQuery = convertToTsQuery(queryText);
-
-            String sql = """
-                    SELECT id, content, metadata,
-                           ts_rank(to_tsvector('simple', content), to_tsquery('simple', ?)) AS rank
-                    FROM travel_hub_vectors
-                    WHERE to_tsvector('simple', content) @@ to_tsquery('simple', ?)
-                    ORDER BY rank DESC
-                    LIMIT ?
-                    """;
-
-            List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, tsQuery, tsQuery, SPARSE_TOP_K);
-
-            return rows.stream()
-                    .map(row -> {
-                        String id = (String) row.get("id");
-                        String content = (String) row.get("content");
-                        Double rank = (Double) row.get("rank");
-
-                        Map<String, Object> metadata = new HashMap<>();
-                        metadata.put("source", "bm25");
-                        metadata.put("rank", rank);
-
-                        return new Document(id, content, metadata);
-                    })
-                    .collect(Collectors.toList());
-        } catch (Exception e) {
-            log.error("[ToolRag] Sparse召回异常", e);
-            return Collections.emptyList();
-        }
-    }
-
-    /**
-     * Sparse 召回：使用 Elasticsearch BM25 全文检索（真 BM25 + cjk 中文双字分词）
-     *
-     * <p>调用 ES {@code _search} API：match 查询（默认 OR + 评分排序），
-     * 索引 {@code travel_hub_tools} 使用 cjk 分析器（ES 内置，中文按双字 bigram 切分，
-     * 无需 IK 插件即可中文检索；要更精准的词级切分可后续换 IK）。
-     *
-     * <p>⚠️ 数据一致性：ES 索引目前是 PG 数据的一次性副本，工具描述更新后需同步（双写）。
-     */
-    private List<Document> sparseRetrieveByES(String queryText) {
-        try {
-            String body = JSON.toJSONString(Map.of(
-                    "query", Map.of("match", Map.of("content", queryText)),
-                    "size", SPARSE_TOP_K,
-                    "_source", List.of("id", "content")
-            ));
-
-            String resp = restClient.post()
-                    .uri(esUrl + "/" + ES_INDEX + "/_search")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .body(body)
-                    .retrieve()
-                    .body(String.class);
-
-            JSONObject root = JSON.parseObject(resp);
-            JSONArray hits = root.getJSONObject("hits").getJSONArray("hits");
-
-            List<Document> docs = new ArrayList<>();
-            for (int i = 0; i < hits.size(); i++) {
-                JSONObject hit = hits.getJSONObject(i);
-                JSONObject source = hit.getJSONObject("_source");
-                double score = hit.getDoubleValue("_score");
-
-                Map<String, Object> metadata = new HashMap<>();
-                metadata.put("source", "bm25_es");
-                metadata.put("rank", score);
-
-                docs.add(new Document(source.getString("id"), source.getString("content"), metadata));
-            }
-            return docs;
-        } catch (Exception e) {
-            log.error("[ToolRag] Sparse(ES) 召回异常 | esUrl={}", esUrl, e);
-            return Collections.emptyList();
-        }
-    }
-
-    /**
-     * 将普通文本转换为 PostgreSQL tsquery 格式
-     * 使用 simple 分词器，按空格分词后用 & 连接
-     */
-    private String convertToTsQuery(String text) {
-        if (text == null || text.isBlank()) {
-            return "";
-        }
-        // 移除特殊字符，按空格分词
-        String[] tokens = text.replaceAll("[^\\w\\s]", "").trim().split("\\s+");
-        return Arrays.stream(tokens)
-                .filter(t -> !t.isBlank())
-                .collect(Collectors.joining(" & "));
-    }
-
-    /**
-     * 合并 Dense 和 Sparse 结果并去重
-     * 优先保留 Dense 结果（向量语义更准确），Sparse 结果作为补充
-     */
-    private List<Document> mergeAndDeduplicate(List<Document> denseResults, List<Document> sparseResults) {
-        // 使用 LinkedHashMap 保持插入顺序
-        Map<String, Document> mergedMap = new LinkedHashMap<>();
-
-        // 先加入 Dense 结果（优先级高）
-        for (Document doc : denseResults) {
-            mergedMap.put(doc.getId(), doc);
-        }
-
-        // 再加入 Sparse 结果（补充）
-        for (Document doc : sparseResults) {
-            if (!mergedMap.containsKey(doc.getId())) {
-                mergedMap.put(doc.getId(), doc);
-            }
-        }
-
-        return new ArrayList<>(mergedMap.values());
     }
 }

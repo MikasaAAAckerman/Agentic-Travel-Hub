@@ -57,6 +57,13 @@
             <artifactId>spring-ai-starter-vector-store-pgvector</artifactId>
         </dependency>
 
+        <!-- ================================== PDF 解析 ================================== -->
+        <!-- PDFBox：文本抽取（带坐标）+ 页面渲染成图（PDF 多模态 RAG） -->
+        <dependency>
+            <groupId>org.apache.pdfbox</groupId>
+            <artifactId>pdfbox</artifactId>
+        </dependency>
+
         <!-- ================================== Spring boot相关 ================================== -->
         <!-- Spring断路器 -->
         <dependency>

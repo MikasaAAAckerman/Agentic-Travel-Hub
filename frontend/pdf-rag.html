@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>红豆 · PDF 多模态问答</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@300;400;600;700&family=Zen+Kaku+Gothic+New:wght@300;400;500&family=Shippori+Mincho:wght@400;600;700&display=swap" rel="stylesheet">
+    <!-- pdf.js：渲染原 PDF + bbox 高亮 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script>
+        if (window.pdfjsLib) {
+            pdfjsLib.GlobalWorkerOptions.workerSrc =
+                'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        }
+    </script>
+    <style>
+        :root {
+            --washi: #f7f3ed;
+            --ink: #2c2416;
+            --ink-light: #6b5e4a;
+            --ink-fade: #a89880;
+            --vermilion: #b5343a;
+            --vermilion-fade: #d4a0a0;
+            --indigo: #2c4270;
+            --gold: #8b7340;
+            --paper: #faf7f2;
+            --shadow: 0 2px 16px rgba(44,36,22,0.06);
+            --line: #d4ccc0;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Zen Kaku Gothic New', 'Noto Serif SC', serif;
+            background: var(--washi);
+            color: var(--ink);
+            min-height: 100vh;
+            display: flex; align-items: center; justify-content: center;
+            background-image:
+                linear-gradient(0deg, transparent 24px, #e8e0d4 25px),
+                linear-gradient(90deg, transparent 24px, #e8e0d4 25px);
+            background-size: 25px 25px;
+            padding: 20px;
+        }
+
+        .container {
+            width: 100%; max-width: 1600px; height: 94vh;
+            background: var(--paper);
+            border: 1px solid var(--line);
+            box-shadow: var(--shadow), 0 0 0 8px #f0ece4, 0 0 0 9px var(--line);
+            display: flex; flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* ── Header ── */
+        .header {
+            padding: 18px 28px;
+            display: flex; align-items: center; justify-content: space-between;
+            border-bottom: 1px solid var(--line);
+        }
+        .header-left { display: flex; align-items: center; gap: 16px; }
+        .hanko {
+            width: 40px; height: 40px;
+            border: 1.5px solid var(--vermilion);
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-family: 'Shippori Mincho', serif;
+            font-size: 20px; color: var(--vermilion);
+            background: #fdf8f5;
+        }
+        .header-title {
+            font-family: 'Shippori Mincho', serif;
+            font-size: 22px; font-weight: 600;
+            letter-spacing: 3px;
+        }
+        .header-title span { color: var(--vermilion); font-size: 14px; }
+        .header-subtitle { font-size: 11px; color: var(--ink-fade); letter-spacing: 1px; }
+
+        /* ── 三栏布局 ── */
+        .main {
+            flex: 1; display: grid;
+            grid-template-columns: 280px 1fr 1.1fr;
+            overflow: hidden;
+        }
+        .panel { display: flex; flex-direction: column; overflow: hidden; }
+        .panel + .panel { border-left: 1px solid var(--line); }
+        .panel-head {
+            padding: 12px 16px; font-size: 12px; letter-spacing: 2px;
+            color: var(--ink-light); border-bottom: 1px solid var(--line);
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .panel-body { flex: 1; overflow-y: auto; padding: 14px; }
+
+        /* ── 上传区 ── */
+        .upload-zone {
+            border: 1.5px dashed var(--line); border-radius: 6px;
+            padding: 20px 12px; text-align: center; cursor: pointer;
+            transition: all .2s; margin-bottom: 14px; background: #fdfbf7;
+        }
+        .upload-zone:hover, .upload-zone.dragover {
+            border-color: var(--vermilion); background: #fdf5f5;
+        }
+        .upload-zone .icon { font-size: 24px; color: var(--ink-fade); }
+        .upload-zone .text { font-size: 12px; color: var(--ink-light); margin-top: 6px; }
+
+        /* ── 文档列表 ── */
+        .doc-item {
+            border: 1px solid var(--line); border-radius: 5px;
+            padding: 10px 12px; margin-bottom: 8px; background: #fdfbf7;
+            transition: all .2s;
+        }
+        .doc-item:hover { border-color: var(--vermilion-fade); }
+        .doc-name {
+            font-size: 13px; font-weight: 600; color: var(--ink);
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .doc-meta {
+            font-size: 11px; color: var(--ink-fade); margin-top: 4px;
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .status-tag { padding: 1px 6px; border-radius: 3px; font-size: 10px; }
+        .status-PARSING { background: #fdf3e0; color: var(--gold); }
+        .status-READY { background: #e8f0e8; color: #4a7a4a; }
+        .status-FAILED { background: #fbe9e9; color: var(--vermilion); }
+        .doc-del {
+            cursor: pointer; color: var(--ink-fade); font-size: 12px;
+            border: none; background: none; padding: 0 2px;
+        }
+        .doc-del:hover { color: var(--vermilion); }
+
+        /* ── 聊天区 ── */
+        .chat-body { flex: 1; overflow-y: auto; padding: 16px 20px; }
+        .msg { margin-bottom: 16px; }
+        .msg-user {
+            text-align: right;
+        }
+        .msg-user .bubble {
+            display: inline-block; background: var(--indigo); color: #fff;
+            padding: 8px 14px; border-radius: 12px 12px 2px 12px;
+            font-size: 13px; max-width: 80%; text-align: left;
+        }
+        .msg-ai .bubble {
+            display: inline-block; background: #fff; border: 1px solid var(--line);
+            padding: 12px 16px; border-radius: 12px 12px 12px 2px;
+            font-size: 13px; line-height: 1.8; max-width: 92%;
+            white-space: pre-wrap; word-break: break-word;
+        }
+        .msg-ai .bubble table {
+            border-collapse: collapse; margin: 8px 0; font-size: 12px; width: 100%;
+        }
+        .msg-ai .bubble th, .msg-ai .bubble td {
+            border: 1px solid var(--line); padding: 4px 8px; text-align: left;
+        }
+        .msg-ai .bubble th { background: #f5f1e8; }
+
+        /* 引用锚点 */
+        .cite {
+            display: inline-block; cursor: pointer;
+            color: var(--vermilion); font-size: 11px; font-weight: 600;
+            border: 1px solid var(--vermilion-fade); border-radius: 3px;
+            padding: 0 3px; margin: 0 1px; vertical-align: super;
+            transition: all .15s;
+        }
+        .cite:hover { background: var(--vermilion); color: #fff; }
+
+        .chat-input {
+            border-top: 1px solid var(--line); padding: 12px 16px;
+            display: flex; gap: 10px;
+        }
+        .chat-input input {
+            flex: 1; border: 1px solid var(--line); border-radius: 4px;
+            padding: 9px 12px; font-size: 13px; font-family: inherit;
+            background: #fff; color: var(--ink); outline: none;
+        }
+        .chat-input input:focus { border-color: var(--vermilion-fade); }
+        .btn {
+            border: 1px solid var(--vermilion); background: var(--vermilion);
+            color: #fff; padding: 9px 20px; border-radius: 4px;
+            font-size: 13px; font-family: inherit; cursor: pointer;
+            letter-spacing: 2px; transition: all .2s;
+        }
+        .btn:hover { background: #9c2c31; }
+        .btn:disabled { background: var(--ink-fade); border-color: var(--ink-fade); cursor: not-allowed; }
+
+        /* ── PDF 查看器 ── */
+        .viewer-body {
+            flex: 1; overflow: auto; padding: 12px; background: #ece7dd;
+            display: flex; flex-direction: column; align-items: center;
+        }
+        .viewer-body canvas {
+            box-shadow: 0 2px 12px rgba(44,36,22,0.15); background: #fff;
+            max-width: 100%;
+        }
+        .viewer-hint {
+            color: var(--ink-fade); font-size: 12px; margin-top: 40px;
+            text-align: center; line-height: 2;
+        }
+        .viewer-toolbar {
+            padding: 8px 12px; border-bottom: 1px solid var(--line);
+            display: flex; align-items: center; gap: 10px; font-size: 12px;
+            color: var(--ink-light);
+        }
+        .viewer-toolbar button {
+            border: 1px solid var(--line); background: #fff; cursor: pointer;
+            border-radius: 3px; padding: 2px 8px; font-size: 12px;
+            font-family: inherit; color: var(--ink-light);
+        }
+        .viewer-toolbar button:hover { border-color: var(--vermilion-fade); }
+
+        /* ── 召回面板 ── */
+        .recall-item {
+            font-size: 11px; padding: 6px 8px; margin-bottom: 6px;
+            border-left: 2px solid var(--indigo); background: #fdfbf7;
+            border-radius: 0 4px 4px 0;
+        }
+        .recall-item .head {
+            display: flex; justify-content: space-between; color: var(--ink-light);
+            margin-bottom: 3px;
+        }
+        .recall-item .snip {
+            color: var(--ink-fade); line-height: 1.5;
+            display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+        .score { color: var(--gold); font-weight: 600; }
+
+        .empty { color: var(--ink-fade); font-size: 12px; text-align: center; padding: 20px 0; }
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="header">
+        <div class="header-left">
+            <div class="hanko">文</div>
+            <div>
+                <div class="header-title">PDF 多模态问答 <span>RAG</span></div>
+                <div class="header-subtitle">文字 · 图片 · 表格 | 多路召回 + RRF 融合 + 重排 + 视觉作答</div>
+            </div>
+        </div>
+        <div class="header-subtitle" id="connStatus">未连接</div>
+    </div>
+
+    <div class="main">
+        <!-- 左：文档 + 召回 -->
+        <div class="panel">
+            <div class="panel-head">📚 文档库</div>
+            <div class="panel-body">
+                <div class="upload-zone" id="uploadZone">
+                    <div class="icon">📄</div>
+                    <div class="text">点击或拖拽 PDF 到这里上传</div>
+                </div>
+                <input type="file" id="fileInput" accept="application/pdf" class="hidden">
+                <div id="docList"><div class="empty">还没有文档</div></div>
+
+                <div class="panel-head" style="border-top:1px solid var(--line); margin:14px -14px 10px; padding:10px 16px;">
+                    🔍 本轮召回
+                </div>
+                <div id="recallList"><div class="empty">提问后展示召回明细</div></div>
+            </div>
+        </div>
+
+        <!-- 中：聊天 -->
+        <div class="panel">
+            <div class="panel-head">💬 问答</div>
+            <div class="chat-body" id="chatBody">
+                <div class="empty">上传 PDF 后开始提问吧～<br>回答里的 [1][2] 可以悬浮查看原文位置</div>
+            </div>
+            <div class="chat-input">
+                <input type="text" id="questionInput" placeholder="就 PDF 内容提问，例如：这份文档的核心结论是什么？">
+                <button class="btn" id="sendBtn">提 问</button>
+            </div>
+        </div>
+
+        <!-- 右：PDF 查看器 -->
+        <div class="panel">
+            <div class="panel-head">📖 原文对照</div>
+            <div class="viewer-toolbar">
+                <button id="zoomOut">−</button>
+                <span id="zoomLabel">100%</span>
+                <button id="zoomIn">＋</button>
+                <span id="pageLabel" style="margin-left:auto;"></span>
+            </div>
+            <div class="viewer-body" id="viewerBody">
+                <div class="viewer-hint">
+                    悬浮回答中的引用 [n]<br>这里会自动打开对应页面并高亮
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const API = 'http://localhost:8080';
+    let pollTimer = null;
+    let currentDocId = null;
+    let currentPdf = null;
+    let currentScale = 1.2;
+    let currentPageNum = 0;
+    let citations = [];
+    let answerBuffer = '';
+    let currentBubble = null;
+    let eventSource = null;
+
+    const $ = id => document.getElementById(id);
+
+    // ══════════════════════════════════════════════
+    // 文档管理
+    // ══════════════════════════════════════════════
+
+    async function loadDocuments() {
+        try {
+            const res = await fetch(`${API}/api/pdf/documents`);
+            const docs = await res.json();
+            renderDocuments(docs);
+
+            // 有解析中的文档就继续轮询
+            const parsing = docs.some(d => d.status === 'PARSING');
+            if (parsing && !pollTimer) {
+                pollTimer = setInterval(loadDocuments, 3000);
+            } else if (!parsing && pollTimer) {
+                clearInterval(pollTimer);
+                pollTimer = null;
+            }
+            $('connStatus').textContent = `已连接 · ${docs.length} 个文档`;
+        } catch (e) {
+            $('connStatus').textContent = '连接失败（服务启动了吗？）';
+        }
+    }
+
+    function renderDocuments(docs) {
+        const box = $('docList');
+        if (!docs || docs.length === 0) {
+            box.innerHTML = '<div class="empty">还没有文档</div>';
+            return;
+        }
+        box.innerHTML = docs.map(d => `
+            <div class="doc-item" data-id="${d.id}">
+                <div class="doc-name" title="${escapeHtml(d.fileName || '')}">${escapeHtml(d.fileName || '未命名')}</div>
+                <div class="doc-meta">
+                    <span>${d.pageCount || 0} 页 · ${d.chunkCount || 0} 块</span>
+                    <span>
+                        <span class="status-tag status-${d.status}">${statusText(d.status)}</span>
+                        <button class="doc-del" onclick="deleteDoc('${d.id}')">✕</button>
+                    </span>
+                </div>
+                ${d.status === 'FAILED' && d.errorMsg ? `<div class="doc-meta" style="color:var(--vermilion)">${escapeHtml(d.errorMsg)}</div>` : ''}
+            </div>
+        `).join('');
+    }
+
+    function statusText(s) {
+        return { PARSING: '解析中', READY: '可检索', FAILED: '失败' }[s] || s;
+    }
+
+    async function uploadFile(file) {
+        if (!file) return;
+        const form = new FormData();
+        form.append('file', file);
+        $('connStatus').textContent = `上传中：${file.name} ...`;
+        try {
+            const res = await fetch(`${API}/api/pdf/upload`, { method: 'POST', body: form });
+            const data = await res.json();
+            if (data.code === 200) {
+                $('connStatus').textContent = '已受理，解析中...';
+                loadDocuments();
+            } else {
+                $('connStatus').textContent = '上传失败：' + (data.message || '未知错误');
+            }
+        } catch (e) {
+            $('connStatus').textContent = '上传异常：' + e.message;
+        }
+    }
+
+    async function deleteDoc(docId) {
+        if (!confirm('确定删除这个文档？（向量 + ES + 文件一并清理）')) return;
+        await fetch(`${API}/api/pdf/documents/${docId}`, { method: 'DELETE' });
+        loadDocuments();
+    }
+
+    // ══════════════════════════════════════════════
+    // 问答（结构化 SSE）
+    // ══════════════════════════════════════════════
+
+    function ask() {
+        const question = $('questionInput').value.trim();
+        if (!question) return;
+
+        $('questionInput').value = '';
+        $('sendBtn').disabled = true;
+        answerBuffer = '';
+        citations = [];
+        currentBubble = null;
+
+        appendUserMessage(question);
+        const bubble = appendAiBubble();
+
+        if (eventSource) eventSource.close();
+        eventSource = new EventSource(`${API}/api/pdf/qa/stream?question=${encodeURIComponent(question)}`);
+
+        // 引用（含 bbox）
+        eventSource.addEventListener('citations', e => {
+            const data = JSON.parse(e.data);
+            citations = data.citations || [];
+            renderRecall(citations);
+        });
+
+        // 流式正文
+        eventSource.addEventListener('text', e => {
+            const data = JSON.parse(e.data);
+            answerBuffer += data.text;
+            renderAnswer(bubble, answerBuffer);
+        });
+
+        eventSource.addEventListener('done', () => {
+            eventSource.close();
+            eventSource = null;
+            $('sendBtn').disabled = false;
+        });
+
+        eventSource.addEventListener('error', e => {
+            try {
+                const data = JSON.parse(e.data);
+                answerBuffer += `\n[错误] ${data.message}`;
+                renderAnswer(bubble, answerBuffer);
+            } catch (_) { /* 连接级错误，忽略 */ }
+            eventSource.close();
+            eventSource = null;
+            $('sendBtn').disabled = false;
+        });
+
+        // 连接异常兜底
+        eventSource.onerror = () => {
+            if (eventSource && eventSource.readyState === EventSource.CLOSED) {
+                $('sendBtn').disabled = false;
+            }
+        };
+    }
+
+    function appendUserMessage(text) {
+        const body = $('chatBody');
+        const empty = body.querySelector('.empty');
+        if (empty) empty.remove();
+        body.insertAdjacentHTML('beforeend',
+            `<div class="msg msg-user"><div class="bubble">${escapeHtml(text)}</div></div>`);
+        body.scrollTop = body.scrollHeight;
+    }
+
+    function appendAiBubble() {
+        const body = $('chatBody');
+        const div = document.createElement('div');
+        div.className = 'msg msg-ai';
+        div.innerHTML = '<div class="bubble"></div>';
+        body.appendChild(div);
+        body.scrollTop = body.scrollHeight;
+        return div.querySelector('.bubble');
+    }
+
+    /**
+     * 渲染回答：转义 HTML + 把 [n] 变成可悬浮的引用锚点 + 还原 markdown 表格。
+     */
+    function renderAnswer(bubble, text) {
+        let html = escapeHtml(text);
+        // [n] → 引用锚点
+        html = html.replace(/\[(\d+)\]/g, (m, n) =>
+            `<span class="cite" data-index="${n}" onmouseenter="onCiteHover(${n})">[${n}]</span>`);
+        // markdown 表格 → HTML 表格（简单版）
+        html = renderTables(html);
+        bubble.innerHTML = html;
+        const body = $('chatBody');
+        body.scrollTop = body.scrollHeight;
+    }
+
+    function renderTables(text) {
+        const lines = text.split('\n');
+        let out = [], table = [];
+        const flush = () => {
+            if (table.length < 2) { out.push(...table); table = []; return; }
+            let html = '<table>';
+            table.forEach((row, i) => {
+                if (/^\s*\|?[\s:|-]+\|?\s*$/.test(row)) return;   // 分隔行
+                const cells = row.split('|').map(c => c.trim()).filter((c, idx, arr) =>
+                    !(idx === 0 && c === '') && !(idx === arr.length - 1 && c === ''));
+                html += '<tr>' + cells.map(c => `<${i === 0 ? 'th' : 'td'}>${c}</${i === 0 ? 'th' : 'td'}>`).join('') + '</tr>';
+            });
+            html += '</table>';
+            out.push(html);
+            table = [];
+        };
+        lines.forEach(line => {
+            if (line.trim().startsWith('|')) table.push(line);
+            else { flush(); out.push(line); }
+        });
+        flush();
+        return out.join('\n');
+    }
+
+    // ══════════════════════════════════════════════
+    // 召回可视化
+    // ══════════════════════════════════════════════
+
+    function renderRecall(list) {
+        const box = $('recallList');
+        if (!list.length) {
+            box.innerHTML = '<div class="empty">本轮无召回</div>';
+            return;
+        }
+        box.innerHTML = list.map(c => `
+            <div class="recall-item">
+                <div class="head">
+                    <span>[${c.index}] ${c.kind === 'pdf_image' ? '🖼 页面图' : '📝 正文'} · 第${c.page}页</span>
+                    <span class="score">${fmtScore(c)}</span>
+                </div>
+                <div class="snip">${escapeHtml(c.snippet || '')}</div>
+            </div>
+        `).join('');
+    }
+
+    function fmtScore(c) {
+        if (c.rerankScore != null) return 'R ' + Number(c.rerankScore).toFixed(3);
+        if (c.rrfScore != null) return 'RRF ' + Number(c.rrfScore).toFixed(4);
+        return '';
+    }
+
+    // ══════════════════════════════════════════════
+    // PDF 查看器 + bbox 高亮
+    // ══════════════════════════════════════════════
+
+    async function onCiteHover(index) {
+        const cite = citations.find(c => c.index === index);
+        if (!cite) return;
+        if (!window.pdfjsLib) {
+            $('connStatus').textContent = 'pdf.js 未加载（检查网络）';
+            return;
+        }
+        try {
+            // 换文档才重新加载
+            if (currentDocId !== cite.docId) {
+                currentDocId = cite.docId;
+                currentPdf = await pdfjsLib.getDocument(`${API}/api/pdf/file/${cite.docId}`).promise;
+            }
+            await renderPage(cite.page, cite.bbox);
+        } catch (e) {
+            $('connStatus').textContent = 'PDF 加载失败：' + e.message;
+        }
+    }
+
+    async function renderPage(pageNum, bbox) {
+        if (!currentPdf) return;
+        const page = await currentPdf.getPage(pageNum);
+        const viewport = page.getViewport({ scale: currentScale });
+
+        let canvas = $('viewerBody').querySelector('canvas');
+        if (!canvas) {
+            $('viewerBody').innerHTML = '';
+            canvas = document.createElement('canvas');
+            $('viewerBody').appendChild(canvas);
+        }
+        const ctx = canvas.getContext('2d');
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+
+        await page.render({ canvasContext: ctx, viewport }).promise;
+
+        // bbox 高亮（PDF 用户空间 → 画布坐标，pdf.js 自动处理原点翻转）
+        if (bbox) {
+            const rect = viewport.convertToViewportRectangle([bbox.x0, bbox.y0, bbox.x1, bbox.y1]);
+            const x = Math.min(rect[0], rect[2]);
+            const y = Math.min(rect[1], rect[3]);
+            const w = Math.abs(rect[2] - rect[0]);
+            const h = Math.abs(rect[3] - rect[1]);
+
+            ctx.fillStyle = 'rgba(181, 52, 58, 0.18)';
+            ctx.fillRect(x, y, w, h);
+            ctx.strokeStyle = '#b5343a';
+            ctx.lineWidth = 1.5;
+            ctx.strokeRect(x, y, w, h);
+        }
+
+        currentPageNum = pageNum;
+        $('pageLabel').textContent = `第 ${pageNum} / ${currentPdf.numPages} 页`;
+    }
+
+    // ══════════════════════════════════════════════
+    // 工具
+    // ══════════════════════════════════════════════
+
+    function escapeHtml(s) {
+        return String(s == null ? '' : s)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    // ══════════════════════════════════════════════
+    // 事件绑定
+    // ══════════════════════════════════════════════
+
+    $('uploadZone').addEventListener('click', () => $('fileInput').click());
+    $('fileInput').addEventListener('change', e => uploadFile(e.target.files[0]));
+
+    const zone = $('uploadZone');
+    zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragover'); });
+    zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+    zone.addEventListener('drop', e => {
+        e.preventDefault();
+        zone.classList.remove('dragover');
+        uploadFile(e.dataTransfer.files[0]);
+    });
+
+    $('sendBtn').addEventListener('click', ask);
+    $('questionInput').addEventListener('keydown', e => { if (e.key === 'Enter') ask(); });
+
+    $('zoomIn').addEventListener('click', () => { currentScale = Math.min(3, currentScale + 0.2); updateZoom(); });
+    $('zoomOut').addEventListener('click', () => { currentScale = Math.max(0.5, currentScale - 0.2); updateZoom(); });
+
+    function updateZoom() {
+        $('zoomLabel').textContent = Math.round(currentScale * 100) + '%';
+        if (currentPageNum) {
+            const cite = citations.find(c => c.page === currentPageNum);
+            renderPage(currentPageNum, cite ? cite.bbox : null);
+        }
+    }
+
+    // 启动
+    loadDocuments();
+</script>
+</body>
+</html>
