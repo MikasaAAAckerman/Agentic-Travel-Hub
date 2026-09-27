@@ -10,6 +10,7 @@ import org.springframework.ai.document.Document;
 import org.springframework.ai.rag.Query;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.MediaType;
@@ -33,14 +34,19 @@ public class LocalToolRagChannel implements ToolRagChannel {
     private final JdbcTemplate jdbcTemplate;
 
     /**
+     * 工具重排器（可选）：配置了 tool-rerank.model 才有 bean，未配置时 getIfAvailable() 返回 null
+     */
+    private final ObjectProvider<ToolReranker> toolRerankerProvider;
+
+    /**
      * 向量召回 TopK
      */
-    private static final int DENSE_TOP_K = 5;
+    private static final int DENSE_TOP_K = 20;
 
     /**
      * BM25 全文检索 TopK
      */
-    private static final int SPARSE_TOP_K = 5;
+    private static final int SPARSE_TOP_K = 20;
 
     /**
      * 最终返回的文档数量
@@ -65,9 +71,11 @@ public class LocalToolRagChannel implements ToolRagChannel {
 
     private final RestClient restClient;
 
-    public LocalToolRagChannel(VectorStore vectorStore, JdbcTemplate jdbcTemplate) {
+    public LocalToolRagChannel(VectorStore vectorStore, JdbcTemplate jdbcTemplate,
+                               ObjectProvider<ToolReranker> toolRerankerProvider) {
         this.vectorStore = vectorStore;
         this.jdbcTemplate = jdbcTemplate;
+        this.toolRerankerProvider = toolRerankerProvider;
         this.restClient = RestClient.builder().build();
         log.info("[ToolRag] 初始化本地多路召回通道");
     }
@@ -90,6 +98,13 @@ public class LocalToolRagChannel implements ToolRagChannel {
         // 3. 合并去重
         List<Document> mergedResults = mergeAndDeduplicate(denseResults, sparseResults);
         log.info("[ToolRag] 合并去重完成 | count={}", mergedResults.size());
+
+        // 3.5 工具重排（配置了 tool-rerank.model 才启用）：Cross-Encoder 对 (query, 候选) 逐对精排
+        ToolReranker toolReranker = toolRerankerProvider.getIfAvailable();
+        if (toolReranker != null) {
+            mergedResults = toolReranker.rerank(queryText, mergedResults);
+            log.info("[ToolRag] 重排完成 | count={}", mergedResults.size());
+        }
 
         // 4. 截断到最终 TopK
         if (mergedResults.size() > FINAL_TOP_K) {

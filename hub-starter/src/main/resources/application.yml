@@ -101,6 +101,13 @@ management:
 tool-rag:
   channel: local
 
+# Tool 工具召回重排配置（可选）：配置了 tool-rerank.model 才会启用重排
+# model 引用模型池路径 {provider}.models.{modelKey}，例：qwen.models.qwen3.7-text-rerank
+# 模型池（qwen/deepseek/openrouter 的 api-key/endpoint/models）在 application-dev.yml 里维护
+# 想关闭重排：注释掉 model 这一行即可
+tool-rerank:
+  model: qwen.models.qwen3.7-text-rerank
+
 # 旅行资料库名称（DashScope 知识库）
 travel-document-retriever-name: "旅行衣食住行资料库"
 
