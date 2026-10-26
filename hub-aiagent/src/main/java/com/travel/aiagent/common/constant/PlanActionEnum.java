@@ -13,6 +13,14 @@ public enum PlanActionEnum {
     CLARIFY("CLARIFY"),
     SUB_AGENT_CALL("SUB_AGENT_CALL"),
 
+    /**
+     * 约束回执校验被拒，本轮回 planner 重来。
+     *
+     * <p>不用 {@code StateGraph.START} 表达这个语义 —— 那样会依赖"未知 action 一律回 planner"
+     * 的兜底分支，哪天兜底改了就会静默失效。
+     */
+    RETRY_PLAN("RETRY_PLAN"),
+
     ;
 
     private String type;

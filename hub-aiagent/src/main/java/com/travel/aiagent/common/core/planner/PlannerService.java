@@ -146,6 +146,26 @@ public class PlannerService {
      * 与 String 版（v0/v1/v2 用）区分，避免破坏旧版本调用。
      */
     public PlanDetailVO doSubAgentPlanReAct(SubAgentReActContextVO context, String subAgentName) {
+        return doSubAgentPlanReAct(context, subAgentName, null);
+    }
+
+    /**
+     * v3 子 Agent 带约束区块版本：System Prompt = 基础规则 + 本次下发的全局约束 + 回执要求。
+     *
+     * @param constraintBlock {@code ConstraintRenderer.render()} 的产物，可为空
+     */
+    public PlanDetailVO doSubAgentPlanReAct(SubAgentReActContextVO context, String subAgentName, String constraintBlock) {
+        return doSubAgentPlanReAct(context, subAgentName, constraintBlock,
+                constraintBlock != null && !constraintBlock.isBlank());
+    }
+
+    /**
+     * @param requireReceipt 只有真的下发了全局约束才追加回执要求；
+     *                       否则模型会对着不存在的约束编造裁决，反而制造幽灵回执
+     */
+    public PlanDetailVO doSubAgentPlanReAct(SubAgentReActContextVO context, String subAgentName,
+                                            String constraintBlock, boolean requireReceipt) {
+        String systemPrompt = SystemPrompt.buildSubAgentSystemPrompt(constraintBlock, requireReceipt);
         String userMessage = """
                 这是 orchestrator 给你下发的任务，以及你之前每一轮的自我规划与执行结果：
 
@@ -166,7 +186,7 @@ public class PlannerService {
 
         try {
             result = plannerClient.prompt()
-                    .system(SystemPrompt.TRAVEL_SUB_AGENT_PLANNER_SYSTEM_PROMPT)
+                    .system(systemPrompt)
                     .user(userMessage)
                     .call().entity(PlanDetailVO.class);
 
@@ -184,7 +204,7 @@ public class PlannerService {
             llmCallLogService.recordPlannerCall(
                     subAgentName,
                     "v3",
-                    SystemPrompt.TRAVEL_SUB_AGENT_PLANNER_SYSTEM_PROMPT,
+                    systemPrompt,
                     userMessage,
                     JSON.toJSONString(context),
                     JSON.toJSONString(result),

@@ -1,7 +1,10 @@
 package com.travel.aiagent.common.domain;
 
 import com.travel.aiagent.common.annotation.PromptField;
+import com.travel.aiagent.common.domain.constraint.ConstraintDraftVO;
 import lombok.Data;
+
+import java.util.List;
 
 /**
  * 计划详情类，Planner 输出的结构化决策。
@@ -29,5 +32,24 @@ public class PlanDetailVO {
 
     @PromptField(value = "如果 action=SUB_AGENT_CALL，那么这里填需要调用的子Agent模块名 ", example = "FoodAgent")
     private String subAgentName;
+
+    /**
+     * 约束回执：仅子 Agent 在 action=FINISH 时填写。
+     *
+     * <p>故意不加 {@code @PromptField}：它不是扁平字符串，自动生成的 JSON 示例装不下，
+     * 具体形状在子 Agent System Prompt 的【回执要求】里说明，由 {@code entity()} 的 schema 兜底。
+     */
+    private List<ConstraintUseVO> constraintUse;
+
+    /**
+     * 约束草稿：**仅 Orchestrator 在第一次派发子任务时**随计划一起输出。
+     *
+     * <p>这是一步抽取方案：省掉一次独立的抽取调用，让约束和计划同源。
+     * 后续轮次必须输出空数组（"只抽一次"由 {@code OrchestratorGraphNode} 的 state 判断兜底，
+     * 不依赖模型自觉）。
+     *
+     * <p>不加 {@code @PromptField}：形状在 Orchestrator System Prompt 的【约束抽取】区块里说明。
+     */
+    private List<ConstraintDraftVO> constraints;
 
 }

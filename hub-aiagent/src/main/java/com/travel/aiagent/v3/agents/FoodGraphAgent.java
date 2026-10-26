@@ -15,4 +15,9 @@ public class FoodGraphAgent extends BaseTravelGraphAgent {
 
     @Override
     public String description() { return "美食探索专家：附近餐厅搜索、地道美食推荐、深夜食堂、宠物友好/亲子餐厅、Brunch咖啡馆"; }
+
+    @Override
+    protected String domainInstruction() {
+        return "推荐任何餐厅前，必须先确认其菜品是否避开用户提出的饮食禁忌/过敏原。";
+    }
 }

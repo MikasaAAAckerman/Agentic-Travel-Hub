@@ -5,13 +5,23 @@ import com.alibaba.cloud.ai.graph.action.NodeAction;
 import com.travel.aiagent.common.constant.AgentEventType;
 import com.travel.aiagent.common.constant.GraphStateKey;
 import com.travel.aiagent.common.constant.PlanActionEnum;
+import com.travel.aiagent.common.core.constraint.ConstraintRenderer;
+import com.travel.aiagent.common.core.constraint.PlanConstraintChecker;
 import com.travel.aiagent.common.core.planner.PlannerService;
 import com.travel.aiagent.common.core.worker.WorkerService;
+import com.travel.aiagent.common.domain.ConstraintUseVO;
 import com.travel.aiagent.common.domain.PlanDetailVO;
 import com.travel.aiagent.common.domain.WorkDetailVO;
+import com.travel.aiagent.common.domain.constraint.ConstraintSet;
+import com.travel.aiagent.common.domain.constraint.ConstraintVerdictBuffer;
+import com.travel.aiagent.common.domain.constraint.Modality;
+import com.travel.aiagent.common.domain.constraint.Receipt;
+import com.travel.aiagent.common.domain.constraint.Verdict;
+import com.travel.aiagent.common.domain.constraint.VerdictStatus;
 import com.travel.aiagent.common.memory.ShortTermMemory;
 import com.travel.aiagent.common.memory.SubAgentReActContextVO;
 import com.travel.aiagent.common.memory.TurnVO;
+import com.travel.aiagent.common.metrics.AgentMetrics;
 import com.travel.aiagent.common.session.AgentSessionRegistry;
 import com.travel.aiagent.common.utils.AgentMDC;
 import jakarta.annotation.Resource;
@@ -21,6 +31,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 
@@ -31,6 +42,13 @@ import java.util.Map;
  * <pre>
  *   START → planner → worker → planner (loop) → finish → END
  * </pre>
+ *
+ * <p>约束治理在本图里的三个落点：
+ * <ol>
+ *   <li>planner：把只读约束快照渲染进 System Prompt（下行）</li>
+ *   <li>worker：登记真实发生过的工具调用（证据来源）</li>
+ *   <li>finish：把模型自报的裁决汇总成回执，并把"无证据的 APPLIED"就地降级（上行）</li>
+ * </ol>
  */
 @Service
 @Slf4j
@@ -47,6 +65,9 @@ public class SubAgentGraphNode {
 
     @Resource
     private AgentSessionRegistry agentSessionRegistry;
+
+    @Resource
+    private AgentMetrics agentMetrics;
 
     /**
      * 子Agent视角中，将当前任务再次进行任务规划的node
@@ -91,14 +112,57 @@ public class SubAgentGraphNode {
                         .build();
             }
 
+            // 下行：全量约束（只读，不筛选）+ 本领域静态执行规则
+            ConstraintSet constraints = state.value(GraphStateKey.GLOBAL_CONSTRAINTS.getKey(), ConstraintSet.empty());
+            String domainInstruction = state.value(GraphStateKey.DOMAIN_INSTRUCTION.getKey(), "");
+            String constraintBlock = buildConstraintBlock(constraints, domainInstruction);
+
+            // 上一轮被拒的原因必须注入本轮 prompt —— 否则温度 0 会一字不差地复读
+            String auditErr = state.value(GraphStateKey.AUDIT_ERR.getKey(), "");
+            if (StringUtils.isNotBlank(auditErr)) {
+                constraintBlock = constraintBlock + "\n\n" + buildRejectHint(auditErr);
+            }
+
             // 传给 LLM 的是结构化记忆：orchestrator 任务 + 前几轮自我 plan/结论，一轮内不丢记忆
-            PlanDetailVO plan = plannerService.doSubAgentPlanReAct(reactContext, subAgentName);
+            // 只有真的下发了全局约束，才要求回执 —— 否则模型会对着不存在的约束编造裁决
+            PlanDetailVO plan = plannerService.doSubAgentPlanReAct(
+                    reactContext, subAgentName, constraintBlock, !constraints.isEmpty());
+
+            // ══════════ 前置校验：worker 之前、记忆之前 ══════════
+            // 一旦回执是编造的，就不该再调工具（有副作用），也不该让它进 ReAct 记忆
+            PlanConstraintChecker.CheckResult check =
+                    PlanConstraintChecker.check(plan.getAction(), plan, constraints);
+
+            if (!check.ok()) {
+                log.warn("[V3-Sub] {} 约束回执被拒，本轮不执行工具 | loop={} | errors={}",
+                        subAgentName, loopTimes, check.errors());
+                agentMetrics.recordConstraintAuditReject();
+                return Map.of(
+                        GraphStateKey.ACTION.getKey(), PlanActionEnum.RETRY_PLAN.getType(),
+                        // 重试消耗轮次：终止条件统一由 maxLoopTimes 兜，不另设上限
+                        GraphStateKey.LOOP_TIMES.getKey(), loopTimes + 1,
+                        GraphStateKey.AUDIT_ERR.getKey(), check.renderErrors());
+            }
 
             Map<String, Object> resultMap = new HashMap<>();
             resultMap.put(GraphStateKey.ACTION.getKey(), plan.getAction());
             resultMap.put(GraphStateKey.SUB_AGENT_PLAN_DETAIL.getKey(), plan.getPlanDetail());
             resultMap.put(GraphStateKey.ORCHESTRATOR_AGENT_CONCLUSION.getKey(), plan.getConclusion());
             resultMap.put(GraphStateKey.LOOP_TIMES.getKey(), loopTimes + 1);
+            resultMap.put(GraphStateKey.AUDIT_ERR.getKey(), "");
+
+            // 只有 FINISH 轮才采纳裁决：回执是"结论那一步"的产物，
+            // 中间轮（TOOL_CALL）的 constraintUse 只是模型的中间思考，不进账。
+            if (PlanActionEnum.FINISH.getType().equals(plan.getAction())) {
+                List<Verdict> reported = toVerdicts(plan.getConstraintUse());
+                ConstraintVerdictBuffer buffer = state.value(
+                        GraphStateKey.CONSTRAINT_VERDICTS.getKey(), (ConstraintVerdictBuffer) null);
+                if (buffer != null && !reported.isEmpty()) {
+                    buffer.addAll(reported);
+                    log.info("[V3-Sub] {} 采纳裁决 {} 条 | 累计 {} 条",
+                            subAgentName, reported.size(), buffer.size());
+                }
+            }
 
             AgentMDC.setEventType(AgentEventType.PLANNER_OUTPUT.getType());
             AgentMDC.setPlannerAction(plan.getAction());
@@ -158,7 +222,8 @@ public class SubAgentGraphNode {
 
             AgentMDC.setEventType(AgentEventType.WORKER_OUTPUT.getType());
             AgentMDC.setWorkerConclusion(conclusion);
-            log.info("[V3-Sub] {} worker 完成 | success={} | conclusion={}", subAgentName, workerDetail.isSuccess(), conclusion);
+            log.info("[V3-Sub] {} worker 完成 | success={} | conclusion={}",
+                    subAgentName, workerDetail.isSuccess(), conclusion);
 
             AgentMDC.clearContentContext();
             return resultMap;
@@ -167,12 +232,27 @@ public class SubAgentGraphNode {
     }
 
     /**
-     * 子 Agent视角中，当前规划执行完成的节点
+     * 子 Agent视角中，当前规划执行完成的节点。
+     *
+     * <p>约束治理的上行收口：把已通过前置校验的裁决封口成回执。
+     * 这里<b>不做任何语义判断</b> —— 裁决对不对在 planner 那一轮已经定过了。
      */
     public AsyncNodeAction finishNode() {
         NodeAction action = state -> {
-            log.info("[V3-Sub] finish 节点");
-            return Map.of();
+            String subAgentName = state.value(GraphStateKey.SUB_AGENT_NAME.getKey(), "");
+            ConstraintSet constraints = state.value(GraphStateKey.GLOBAL_CONSTRAINTS.getKey(), ConstraintSet.empty());
+            ConstraintVerdictBuffer buffer = state.value(
+                    GraphStateKey.CONSTRAINT_VERDICTS.getKey(), (ConstraintVerdictBuffer) null);
+            List<Verdict> verdicts = buffer == null ? List.of() : buffer.snapshot();
+
+            Receipt receipt = Receipt.ofVerdicts(constraints.revision(), constraints.digest(), verdicts);
+            log.info("[V3-Sub] {} finish 节点 | 回执 {} 条裁决 | revision={} digest={}",
+                    subAgentName, verdicts.size(), receipt.revision(), receipt.digest());
+
+            Map<String, Object> delta = new HashMap<>();
+            // 跨子图边界只能传字符串：直接塞 Receipt 会被框架隐式序列化，verdicts 元素退化成 Map
+            delta.put(GraphStateKey.CONSTRAINT_RECEIPT.getKey(), receipt.toJson());
+            return delta;
         };
         return AsyncNodeAction.node_async(action);
     }
@@ -209,5 +289,52 @@ public class SubAgentGraphNode {
             return delta;
         };
         return AsyncNodeAction.node_async(action);
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // 约束治理辅助
+    // ═══════════════════════════════════════════════════════════
+
+    private String buildConstraintBlock(ConstraintSet constraints, String domainInstruction) {
+        String global = ConstraintRenderer.render(constraints);
+        String domain = ConstraintRenderer.renderDomainInstruction(domainInstruction);
+        if (global.isBlank()) {
+            return domain;
+        }
+        return domain.isBlank() ? global : global + "\n\n" + domain;
+    }
+
+    private String buildRejectHint(String errors) {
+        return """
+                【上一轮输出被程序拒绝】
+                你的 constraintUse 不符合契约，已被拒绝，请严格遵守约束条件重新制定任务。
+
+                错误明细：
+                %s
+
+                重新生成时必须满足：
+                1. TOOL_CALL 轮的 constraintUse 必须为空
+                2. FINISH 轮必须对每一条约束恰好表态一次
+                3. status 只允许 APPLIED / UNUSED / VIOLATED
+                4. 每一条都必须写出 reason
+                """.formatted(errors);
+    }
+
+    private List<Verdict> toVerdicts(List<ConstraintUseVO> uses) {
+        if (uses == null || uses.isEmpty()) {
+            return List.of();
+        }
+        List<Verdict> verdicts = new ArrayList<>(uses.size());
+        for (ConstraintUseVO u : uses) {
+            if (u == null || u.getConstraintId() == null || u.getConstraintId().isBlank()) {
+                continue;
+            }
+            verdicts.add(new Verdict(
+                    u.getConstraintId(),
+                    VerdictStatus.fromCode(u.getStatus()),
+                    Modality.fromCode(u.getUsedAs()),
+                    u.getReason()));
+        }
+        return verdicts;
     }
 }

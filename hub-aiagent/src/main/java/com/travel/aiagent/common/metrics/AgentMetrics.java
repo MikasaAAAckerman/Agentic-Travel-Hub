@@ -1,10 +1,13 @@
 package com.travel.aiagent.common.metrics;
 
+import com.travel.aiagent.common.core.constraint.AuditResult;
+import com.travel.aiagent.common.core.constraint.Finding;
 import io.micrometer.core.instrument.*;
 import io.micrometer.core.instrument.Timer;
 import lombok.Getter;
 import org.springframework.stereotype.Component;
 
+import java.util.Locale;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -72,6 +75,9 @@ public class AgentMetrics {
     /** 持有 MeterRegistry，供 recordAgentInvoke/Finish 内部按需 register 带 tag 的 meter */
     private final MeterRegistry meterRegistry;
 
+    /** 约束对账耗时 → Grafana "约束对账耗时" 面板（应 < 5ms，否则说明偷偷调了 LLM） */
+    private final Timer constraintAuditDuration;
+
     // ═══════════════════════════════════════════════════════════
     // Gauge 指标（瞬时值，可增可减，Grafana Gauge 面板展示当前状态）
     // ═══════════════════════════════════════════════════════════
@@ -123,6 +129,11 @@ public class AgentMetrics {
 
         this.orchestratorRoundDuration = Timer.builder("orchestrator.round.duration")
                 .description("Orchestrator 单轮耗时")
+                .publishPercentiles(0.5, 0.95, 0.99)
+                .register(registry);
+
+        this.constraintAuditDuration = Timer.builder("constraint.audit.duration")
+                .description("约束对账耗时（纯函数，应远低于 5ms）")
                 .publishPercentiles(0.5, 0.95, 0.99)
                 .register(registry);
 
@@ -192,5 +203,47 @@ public class AgentMetrics {
     /** 记录用户手动停止会话 */
     public void recordAgentStop() {
         agentStopTotal.increment();
+    }
+
+    // ==================== 约束治理 ====================
+
+    /**
+     * 记录一次约束对账。
+     *
+     * <p>指标口径对齐 agent.* / tool.*：
+     * <ul>
+     *   <li>{@code constraint.audit.total{result=pass|soft_fail|hard_fail}} —— 对账通过率</li>
+     *   <li>{@code constraint.violation.total{type=missing_must|ghost_receipt|...}} —— 违规分布，哪类最常见</li>
+     * </ul>
+     */
+    public void recordConstraintAudit(AuditResult audit, long durationMs) {
+        if (audit == null) {
+            return;
+        }
+        meterRegistry.counter("constraint.audit.total",
+                "result", audit.verdict().name().toLowerCase(Locale.ROOT)).increment();
+        for (Finding finding : audit.findings()) {
+            meterRegistry.counter("constraint.violation.total",
+                    "type", finding.type().name().toLowerCase(Locale.ROOT)).increment();
+        }
+        constraintAuditDuration.record(durationMs, TimeUnit.MILLISECONDS);
+    }
+
+    /** 记录一条裁决状态，用于算约束履行率 */
+    public void recordConstraintVerdict(String status) {
+        if (status == null || status.isBlank()) {
+            return;
+        }
+        meterRegistry.counter("constraint.verdict.total",
+                "status", status.toLowerCase(Locale.ROOT)).increment();
+    }
+
+    /**
+     * 记录一次"约束回执被拒"（前置校验失败，本轮不执行工具）。
+     *
+     * <p>这个指标突增通常说明 Prompt 或 schema 出了问题，而不是模型变笨了。
+     */
+    public void recordConstraintAuditReject() {
+        meterRegistry.counter("constraint.audit.reject.total").increment();
     }
 }

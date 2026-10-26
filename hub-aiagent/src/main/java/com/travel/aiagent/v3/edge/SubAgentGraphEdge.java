@@ -41,6 +41,11 @@ public class SubAgentGraphEdge {
             String actionStr = state.value(GraphStateKey.ACTION.getKey(), "");
             if (actionStr == null || actionStr.isEmpty()) return "planner";
 
+            // 约束回执被拒：回 planner 重来（显式枚举，不依赖兜底分支）
+            if (PlanActionEnum.RETRY_PLAN.getType().equals(actionStr)) {
+                return "planner";
+            }
+
             if (PlanActionEnum.FINISH.getType().equals(actionStr)
                     || PlanActionEnum.CLARIFY.getType().equals(actionStr)) {
                 return "finish";

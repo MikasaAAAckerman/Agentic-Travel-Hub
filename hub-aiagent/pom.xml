@@ -80,6 +80,13 @@
             <artifactId>micrometer-tracing-bridge-otel</artifactId>
         </dependency>
 
+        <!-- 单测：约束对账器是纯函数，必须可测 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
     </dependencies>
 
     <build>

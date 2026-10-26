@@ -21,6 +21,13 @@ public enum GraphStateKey {
     TRACE_ID("traceId", "会话级链路追踪ID，前端生成随请求传入，贯穿LLM调用日志"),
     SUB_AGENT_REACT_MEMORY("subAgentReActMemory", "子Agent本轮执行的ReAct记忆（orchestratorPlan + turns），结构化累积不丢失"),
 
+    // ============ 约束治理（全量下行 / 回执上行 / 内容盲审计）============
+    GLOBAL_CONSTRAINTS("globalConstraints", "全局约束只读快照（全量下发，唯一写者是 Orchestrator）"),
+    DOMAIN_INSTRUCTION("domainInstruction", "子Agent本领域静态执行规则（纯Prompt文本，不是约束数据）"),
+    CONSTRAINT_VERDICTS("constraintVerdicts", "子图内部累积的裁决（仅在 FINISH 轮累积）"),
+    CONSTRAINT_RECEIPT("constraintReceipt", "约束执行回执（上行，给程序对账）"),
+    AUDIT_ERR("auditErr", "上一轮约束回执被拒的原因（String，注入下一轮Prompt）"),
+
 
     ;
 

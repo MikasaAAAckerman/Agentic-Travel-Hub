@@ -52,7 +52,10 @@ public class SystemPrompt {
               "action": "TOOL_CALL 或 FINISH 或 CLARIFY",
               "toolDescription": "如果 action=TOOL_CALL，要调用的工具描述",
               "conclusion": "如果 action=FINISH/CLARIFY，最终结论",
-              "planDetail": "需要执行的计划详情，带上详细的信息，不要丢失，比如：时间，人物，地点等"
+              "planDetail": "需要执行的计划详情，带上详细的信息，不要丢失，比如：时间，人物，地点等",
+              "constraintUse": [
+                {"constraintId": "c-0001", "status": "APPLIED 或 UNUSED 或 VIOLATED", "usedAs": "MUST 或 SHOULD 或 PREFER", "reason": "为什么是这个状态"}
+              ]
             }
             
             【注意事项】
@@ -81,10 +84,13 @@ public class SystemPrompt {
                 2. 专家返回”工具执行失败”、”无法获取”等语义 → 当做此子任务已经完成了，继续其他任务，最后结论处告知用户，让用户自己去查询
                 3. 专家返回 CLARIFY → 看看是不是派发任务时漏给了信息，尝试补全信息后重新派发给专家；如果发现是用户确实没告知，那么返回clarify，让用户补全信息
                 
+                【约束抽取 —— 只在第一次派发时做】
+                %s
+
                 【强制输出格式】
                 只输出一个合法 JSON：
                 %s
-                """.formatted(agentDescription, PLANNER_JSON_EXAMPLE);
+                """.formatted(agentDescription, CONSTRAINT_EXTRACTION_SPEC, PLANNER_JSON_EXAMPLE);
     }
 
     public static final String TRAVEL_WORKER_SYSTEM_PROMPT = """
@@ -148,6 +154,95 @@ public class SystemPrompt {
             【强制输出规范】
             1. CHAT —— 如果用户只是在打招呼（如"你好"）、闲聊、赞美、或者问一些无需调用外部工具的通用百科知识。
             2. PLAN —— 如果用户在要求查询天气、规划行程、比价、搜索航班等需要调用外部工具来完成的复杂任务。
+            """;
+
+    // ═══════════════════════════════════════════════════════════
+    // 约束治理（Constraint Governance）
+    // 下行：全局约束只读快照；上行：按 id 的执行回执
+    // ═══════════════════════════════════════════════════════════
+
+    /**
+     * 回执要求 —— 拼在子 Agent Prompt 末尾，是"上行通道"的唯一入口约定。
+     *
+     * <p>契约只有三句话：结论那一步一条一次；三态任一都必须给理由；理由对不对，代码不管。
+     *
+     * <p>注意：<b>不限制中间轮（TOOL_CALL）输出 constraintUse</b>。回执只在 FINISH 那一步产生，
+     * 中间轮的表态既不会被校验，也不会进入回执 —— 它只是模型的中间思考，无害。
+     */
+    public static final String CONSTRAINT_RECEIPT_REQUIREMENT = """
+
+            【回执要求 —— 最后一步必须执行】
+            当 action=FINISH 时，必须对上面【每一条】约束恰好给出一次裁决（不多、不少、不重复）：
+            1. constraintId：原样复制约束后面括号里的 id，**不得自造、不得改号**
+            2. status 只能是三态之一：
+               - APPLIED  ：这条约束已经在你的方案里落实了
+               - UNUSED   ：你看到了它，但这次没有用上
+               - VIOLATED ：你看到了、也知道该用，但确实做不到
+            3. reason：**三态都必须写**，说明你为什么是这个状态。写得越具体越好，
+               哪怕结果是 UNUSED，也要说清楚"为什么这次用不上"。
+            4. usedAs：你把它当成什么等级来对待，只能填 MUST / SHOULD / PREFER，
+               **必须与上面约束标注的等级完全一致**。改了就说明你对它的理解漂移了，这一步会被拒。
+
+            程序只校验"有没有交代"，不评价理由的语义。但缺一条、多一条、改一次号、改一次等级，
+            这一步会被直接拒绝、退回重新规划，不会进入执行。
+            """;
+
+    /**
+     * 组装子 Agent 的 System Prompt：基础规则 + 本次下发的约束区块 + 回执要求。
+     *
+     * @param constraintBlock {@code ConstraintRenderer.render()} 的产物，可为空
+     */
+    public static String buildSubAgentSystemPrompt(String constraintBlock) {
+        return buildSubAgentSystemPrompt(constraintBlock, constraintBlock != null && !constraintBlock.isBlank());
+    }
+
+    /**
+     * @param requireReceipt 只有真的下发了全局约束才追加回执要求。
+     *                       否则模型会对着一堆不存在的约束编造裁决，反而制造幽灵回执。
+     */
+    public static String buildSubAgentSystemPrompt(String constraintBlock, boolean requireReceipt) {
+        StringBuilder sb = new StringBuilder(TRAVEL_SUB_AGENT_PLANNER_SYSTEM_PROMPT);
+        if (constraintBlock != null && !constraintBlock.isBlank()) {
+            sb.append("\n\n").append(constraintBlock);
+        }
+        if (requireReceipt) {
+            sb.append(CONSTRAINT_RECEIPT_REQUIREMENT);
+        }
+        return sb.toString();
+    }
+
+    /**
+     * 约束抽取规范 —— 拼进 Orchestrator 的 System Prompt。
+     *
+     * <p>一步抽取方案：约束随计划一起返回，不再单独调一次抽取模型。
+     * 但"能不能当硬约束"仍然由代码裁定（证据反查 + 来源/模态降级），这里只负责让模型
+     * 按可校验的格式输出：
+     * <ul>
+     *   <li>{@code topic} 是<b>开放</b>短词，不做领域词表校验（词表一定不全，反而误导）</li>
+     *   <li>USER_EXPLICIT 必须给逐字摘录 quote，程序会用 indexOf 反查区间</li>
+     *   <li>推断类必须自报 MODEL_DERIVED，否则归一化阶段会被强制降级</li>
+     * </ul>
+     *
+     * <p>字段名必须与 {@code ConstraintDraftVO} 保持一致，有 {@code SystemPromptContractTest} 守着。
+     */
+    public static final String CONSTRAINT_EXTRACTION_SPEC = """
+            - 每次对话只在【第一次派发子任务】时输出 constraints；同一轮请求里后续的派发必须输出空数组 []。
+            - 什么算约束：用户对这次任务提出的任何限定。判断标准是——
+              去掉这句话，你的方案会不会变？会变，它就是约束。
+            - topic：用自己的话起一个短词做归类，同一件事必须复用同一个 topic（程序靠它去重）。
+            - text：一句话说清这条限定。
+            - modality：MUST（必须满足）/ SHOULD（尽量满足）/ PREFER（只是偏好）。
+            - provenance：USER_EXPLICIT（用户原话）/ USER_IMPLICIT（可由原话按确定规则推出）
+              / MEMORY（历史轮次已确认）/ MODEL_DERIVED（你的推测）。
+            - quote：仅 USER_EXPLICIT 才填，必须从【本轮用户输入】里逐字复制一段连续原文；
+              程序会拿它在原文里精确查找，找不到会降级甚至丢弃，所以不要改写、不要拼接多段。
+
+            格式示例（尖括号是占位符，不要照抄内容）：
+            "constraints": [
+              {"topic":"<短词>","text":"<一句话>","modality":"MUST|SHOULD|PREFER","provenance":"USER_EXPLICIT|USER_IMPLICIT|MODEL_DERIVED","quote":"<逐字摘录>"}
+            ]
+
+            没有约束时输出 "constraints": []。
             """;
 
 }

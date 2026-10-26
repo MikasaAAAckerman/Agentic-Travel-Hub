@@ -5,13 +5,19 @@ import com.alibaba.cloud.ai.graph.action.NodeAction;
 import com.travel.aiagent.common.constant.AgentEventType;
 import com.travel.aiagent.common.constant.GraphStateKey;
 import com.travel.aiagent.common.constant.PlanActionEnum;
+import com.travel.aiagent.common.core.constraint.AuditResult;
+import com.travel.aiagent.common.core.constraint.ConstraintAuditor;
+import com.travel.aiagent.common.core.constraint.ConstraintStore;
 import com.travel.aiagent.common.core.planner.PlannerService;
 import com.travel.aiagent.common.domain.PlanDetailVO;
+import com.travel.aiagent.common.domain.SubAgentOutput;
+import com.travel.aiagent.common.domain.constraint.ConstraintSet;
 import com.travel.aiagent.common.domain.prompt.SystemPrompt;
 import com.travel.aiagent.common.memory.PlannerContextVO;
 import com.travel.aiagent.common.memory.RoundMemory;
 import com.travel.aiagent.common.memory.RoundVO;
 import com.travel.aiagent.common.memory.ShortTermMemory;
+import com.travel.aiagent.common.metrics.AgentMetrics;
 import com.travel.aiagent.common.session.AgentSessionRegistry;
 import com.travel.aiagent.common.utils.AgentMDC;
 import com.travel.aiagent.v3.agents.BaseTravelGraphAgent;
@@ -44,6 +50,15 @@ public class OrchestratorGraphNode {
 
     @Resource
     private AgentSessionRegistry agentSessionRegistry;
+
+    @Resource
+    private ConstraintStore constraintStore;
+
+    @Resource
+    private ConstraintAuditor constraintAuditor;
+
+    @Resource
+    private AgentMetrics agentMetrics;
 
     /**
      * 调度者Agent视角中，将用户输入转为计划的node
@@ -91,6 +106,16 @@ public class OrchestratorGraphNode {
                     .build();
             PlanDetailVO planDetailVO = plannerService.doOrchestratorAgentPlan(plannerContext, systemPrompt);
 
+            // 一步抽取：约束随这次 Planner 调用一起返回，这里只做归一化 + 版本化（不再调模型）。
+            // state 里已有就复用 —— "只抽一次"是代码保证，不靠模型自觉。
+            ConstraintSet constraints = state.value(GraphStateKey.GLOBAL_CONSTRAINTS.getKey(), (ConstraintSet) null);
+            if (constraints == null) {
+                constraints = constraintStore.merge(userId, chatId, userInput, planDetailVO.getConstraints());
+                if (log.isDebugEnabled()) {
+                    log.debug("[SSoT] 本轮约束（归一化后）:\n{}", constraintStore.describe(constraints));
+                }
+            }
+
             // 获取计划后的结果，扔进GraphState中，交给Edge判断进到哪个节点
             Map<String, Object> resultMap = new HashMap<>();
             resultMap.put(GraphStateKey.ACTION.getKey(), planDetailVO.getAction());
@@ -98,14 +123,13 @@ public class OrchestratorGraphNode {
             resultMap.put(GraphStateKey.ORCHESTRATOR_AGENT_PLAN_DETAIL.getKey(), planDetailVO.getPlanDetail());
             resultMap.put(GraphStateKey.ORCHESTRATOR_AGENT_CONCLUSION.getKey(), planDetailVO.getConclusion());
             resultMap.put(GraphStateKey.LOOP_TIMES.getKey(), loopTimes + 1);
+            resultMap.put(GraphStateKey.GLOBAL_CONSTRAINTS.getKey(), constraints);
 
             if ("SUB_AGENT_CALL".equals(planDetailVO.getAction())) {
                 AgentMDC.setEventType(AgentEventType.TASK_DISPATCH.getType());
                 AgentMDC.setSubAgentName(planDetailVO.getSubAgentName());
-                log.info("[V3] Orchestrator 派发任务 → subAgent={} | planDetail={}", planDetailVO.getSubAgentName(), planDetailVO.getPlanDetail());
             } else {
                 AgentMDC.setEventType(AgentEventType.ORCHESTRATOR_FINISH.getType());
-                log.info("[V3] Orchestrator planner → ACTION={} | conclusion={}", planDetailVO.getAction(), planDetailVO.getConclusion());
             }
 
             AgentMDC.clearContentContext();
@@ -136,7 +160,31 @@ public class OrchestratorGraphNode {
 
             log.info("[V3] {} 开始执行 | plan={}", baseTravelGraphAgent.name(), planDetail);
 
-            String result = baseTravelGraphAgent.execute(planDetail, userId, chatId, traceId, null);
+            // 下行：全量约束，不按领域筛选。
+            // 理由：哪个 Agent 关心哪条约束是消费者拓扑的表现，不该由生产者回答；
+            // 现在量小，全量下发的代价只是几百 token，换来的是零丢失。
+            ConstraintSet constraints = state.value(GraphStateKey.GLOBAL_CONSTRAINTS.getKey(), ConstraintSet.empty());
+
+            long auditStart = System.currentTimeMillis();
+            SubAgentOutput output = baseTravelGraphAgent.execute(planDetail, constraints, userId, chatId, traceId, null);
+            String result = output.conclusion();
+
+            // 上行对账（后置）：缺整份回执 / 篡改 / 过期 / 兜底完整性。纯函数、零 LLM。
+            // "表态是否完整"已在 planner 那一轮由 PlanConstraintChecker 拦过，这里只兜底。
+            if (!constraints.isEmpty()) {
+                AuditResult audit = constraintAuditor.audit(constraints, output.receipt());
+                agentMetrics.recordConstraintAudit(audit, System.currentTimeMillis() - auditStart);
+                output.receipt().verdicts().forEach(v ->
+                        agentMetrics.recordConstraintVerdict(v.status().name()));
+                if (!audit.findings().isEmpty()) {
+                    log.warn("[V3] 约束对账未通过 | subAgent={} | {} | findings={}",
+                            subAgentName, audit.summary(), audit.findings());
+                } else {
+                    log.info("[V3] 约束对账通过 | subAgent={} | 约束 {} 条 | 裁决 {} 条",
+                            subAgentName, constraints.items().size(), output.receipt().verdicts().size());
+                }
+            }
+
             // 写入 orchestrator 记忆（RoundMemory 当前轮）：下轮 planner 能看到本轮 subAgent 的执行结果
             roundMemory.recordSubAgentResult(userId, chatId, subAgentName, result);
             // 旧轨 String 记忆保留（overMaxLoopTimes 收尾仍依赖；清理时机由主人定）
