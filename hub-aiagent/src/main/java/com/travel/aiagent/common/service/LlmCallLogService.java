@@ -4,6 +4,7 @@ import com.alibaba.fastjson.JSON;
 import com.travel.aiagent.common.metrics.LlmCallMetrics;
 import com.travel.aiagent.common.repository.LlmCallLogRepository;
 import com.travel.aiagent.common.utils.AgentMDC;
+import com.travel.aiagent.common.utils.TokenEstimator;
 import com.travel.common.domain.LlmCallLog;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -52,12 +53,24 @@ public class LlmCallLogService {
                            String systemPrompt, String userInput, String historyContext,
                            String llmOutput, String parsedOutput,
                            String toolCalls, String toolResults,
-                           Long durationMs, boolean success, String errorMessage) {
+                           Long durationMs, boolean success, String errorMessage,
+                           int promptTokens, int completionTokens) {
 
         String traceId = AgentMDC.getTraceId();
 
+        // 能拿到真实 usage 就用真实值；拿不到（.entity() 路径）用估算兜底。
+        // 估算只服务于"要不要压缩"这类阈值判断，不用于计费。
+        int prompt = promptTokens > 0
+                ? promptTokens
+                : TokenEstimator.estimate(systemPrompt, userInput, historyContext, toolResults);
+        int completion = completionTokens > 0
+                ? completionTokens
+                : TokenEstimator.estimate(llmOutput, parsedOutput);
+
         LlmCallLog callLog = LlmCallLog.builder()
                 .traceId(traceId != null ? traceId : "unknown")
+                .sessionId(AgentMDC.getSessionId())
+                .chatHistoryId(parseLongOrNull(AgentMDC.getChatHistoryId()))
                 .callType(callType)
                 .agentName(agentName)
                 .modelName(modelName)
@@ -69,9 +82,9 @@ public class LlmCallLogService {
                 .parsedOutput(parsedOutput)
                 .toolCalls(toolCalls)
                 .toolResults(toolResults)
-                .promptTokens(0)  // TODO: 从 ChatResponse 中获取
-                .completionTokens(0)
-                .totalTokens(0)
+                .promptTokens(prompt)
+                .completionTokens(completion)
+                .totalTokens(prompt + completion)
                 .durationMs(durationMs)
                 .success(success)
                 .errorMessage(errorMessage)
@@ -79,12 +92,12 @@ public class LlmCallLogService {
                 .build();
 
         llmCallLogRepository.insert(callLog);
-        log.info("[LlmCallLog] 记录调用日志 | traceId={} | callType={} | agentName={} | duration={}ms | success={}",
-                traceId, callType, agentName, durationMs, success);
+        log.info("[LlmCallLog] 记录调用日志 | traceId={} | callType={} | agentName={} | duration={}ms | success={} | tokens={}",
+                traceId, callType, agentName, durationMs, success, prompt + completion);
 
         // 采集 Prometheus 指标
         try {
-            llmCallMetrics.recordCall(callType, agentName, modelName, durationMs, success, 0);
+            llmCallMetrics.recordCall(callType, agentName, modelName, durationMs, success, prompt + completion);
         } catch (Exception e) {
             log.warn("[LlmCallLog] Prometheus 指标采集失败", e);
         }
@@ -113,7 +126,8 @@ public class LlmCallLogService {
                 null,
                 durationMs,
                 success,
-                errorMessage
+                errorMessage,
+                0, 0   // 走 .entity() 拿不到 usage -> 由 recordCall 估算
         );
     }
 
@@ -123,7 +137,8 @@ public class LlmCallLogService {
     public Long recordWorkerCall(String agentName, String version,
                                  String systemPrompt, String userInput,
                                  String llmOutput, String toolCalls, String toolResults,
-                                 Long durationMs, boolean success, String errorMessage) {
+                                 Long durationMs, boolean success, String errorMessage,
+                                 int promptTokens, int completionTokens) {
         return recordCall(
                 LlmCallLog.CallType.WORKER,
                 agentName,
@@ -138,7 +153,8 @@ public class LlmCallLogService {
                 toolResults,
                 durationMs,
                 success,
-                errorMessage
+                errorMessage,
+                promptTokens, completionTokens
         );
     }
 
@@ -161,7 +177,8 @@ public class LlmCallLogService {
                 null,
                 durationMs,
                 success,
-                errorMessage
+                errorMessage,
+                0, 0   // Router 同样走 .entity()，交给估算
         );
     }
 
@@ -222,5 +239,18 @@ public class LlmCallLogService {
                 "avgPlannerDurationMs", Math.round(avgPlannerDuration),
                 "avgWorkerDurationMs", Math.round(avgWorkerDuration)
         );
+    }
+
+    /** MDC 里存的是字符串，转 Long；脏值一律当 null，不让日志写失败 */
+    private static Long parseLongOrNull(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return Long.parseLong(value.trim());
+        } catch (NumberFormatException e) {
+            log.warn("[LlmCallLog] chatHistoryId 格式非法，已忽略 | value={}", value);
+            return null;
+        }
     }
 }

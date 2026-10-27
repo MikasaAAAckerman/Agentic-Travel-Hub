@@ -7,6 +7,7 @@ import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
 
 import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -32,6 +33,8 @@ public class LlmCallLogRepository {
     private final RowMapper<LlmCallLog> rowMapper = (ResultSet rs, int rowNum) -> LlmCallLog.builder()
             .id(rs.getLong("id"))
             .traceId(rs.getString("trace_id"))
+            .sessionId(rs.getString("session_id"))
+            .chatHistoryId(nullableLong(rs, "chat_history_id"))
             .callType(rs.getString("call_type"))
             .agentName(rs.getString("agent_name"))
             .modelName(rs.getString("model_name"))
@@ -58,18 +61,20 @@ public class LlmCallLogRepository {
     public void insert(LlmCallLog callLog) {
         String sql = """
                 INSERT INTO llm_call_log (
-                    trace_id, call_type, agent_name, model_name, version,
+                    trace_id, session_id, chat_history_id, call_type, agent_name, model_name, version,
                     system_prompt, user_input, history_context,
                     llm_output, parsed_output,
                     tool_calls, tool_results,
                     prompt_tokens, completion_tokens, total_tokens,
                     duration_ms, success, error_message, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """;
 
         try {
             jdbcTemplate.update(sql,
                     callLog.getTraceId(),
+                    callLog.getSessionId(),
+                    callLog.getChatHistoryId(),
                     callLog.getCallType(),
                     callLog.getAgentName(),
                     callLog.getModelName(),
@@ -93,6 +98,14 @@ public class LlmCallLogRepository {
         } catch (Exception e) {
             log.error("[LlmCallLog] 插入失败 | traceId={}", callLog.getTraceId(), e);
         }
+    }
+
+    /**
+     * 按聊天记录ID查询（某一轮的全部 LLM 调用，用于页面重放）
+     */
+    public List<LlmCallLog> findByChatHistoryId(Long chatHistoryId) {
+        String sql = "SELECT * FROM llm_call_log WHERE chat_history_id = ? ORDER BY id ASC";
+        return jdbcTemplate.query(sql, rowMapper, chatHistoryId);
     }
 
     /**
@@ -160,5 +173,30 @@ public class LlmCallLogRepository {
         String sql = "SELECT COALESCE(AVG(duration_ms), 0) FROM llm_call_log WHERE call_type = ? AND success = TRUE";
         Double avg = jdbcTemplate.queryForObject(sql, Double.class, callType);
         return avg != null ? avg : 0;
+    }
+
+    /**
+     * 某一轮聊天记录下所有调用的 token 合计（收轮时写进 user_chat_history）。
+     */
+    public TokenTotals sumTokensByChatHistoryId(Long chatHistoryId) {
+        if (chatHistoryId == null) {
+            return new TokenTotals(0, 0);
+        }
+        String sql = """
+                SELECT COALESCE(SUM(prompt_tokens), 0), COALESCE(SUM(completion_tokens), 0)
+                FROM llm_call_log WHERE chat_history_id = ?
+                """;
+        TokenTotals totals = jdbcTemplate.queryForObject(sql,
+                (rs, rowNum) -> new TokenTotals(rs.getInt(1), rs.getInt(2)), chatHistoryId);
+        return totals != null ? totals : new TokenTotals(0, 0);
+    }
+
+    /** 一轮的 token 合计 */
+    public record TokenTotals(int promptTokens, int completionTokens) {
+    }
+
+    private static Long nullableLong(ResultSet rs, String column) throws SQLException {
+        long value = rs.getLong(column);
+        return rs.wasNull() ? null : value;
     }
 }

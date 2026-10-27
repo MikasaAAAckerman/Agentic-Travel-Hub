@@ -13,6 +13,7 @@ import com.travel.aiagent.common.domain.PlanDetailVO;
 import com.travel.aiagent.common.domain.WorkDetailVO;
 import com.travel.aiagent.common.domain.constraint.ConstraintDraftVO;
 import com.travel.aiagent.common.memory.PlannerContextVO;
+import com.travel.aiagent.common.memory.RoundContextService;
 import com.travel.aiagent.common.memory.RoundMemory;
 import com.travel.aiagent.common.memory.ShortTermMemory;
 import com.travel.aiagent.common.memory.SubAgentReActContextVO;
@@ -74,6 +75,7 @@ class ConstraintGovernanceSmokeTest {
     private WorkerService worker;
     private ConstraintStore constraintStore;
     private RoundMemory roundMemory;
+    private RoundContextService roundContextService;
     private ShortTermMemory shortTermMemory;
     private AgentSessionRegistry sessionRegistry;
 
@@ -85,11 +87,14 @@ class ConstraintGovernanceSmokeTest {
         // 用真的 ConstraintStore + 真的 Normalizer：一步抽取的归一化/版本化必须被覆盖到
         constraintStore = new ConstraintStore(new ConstraintNormalizer());
         roundMemory = mock(RoundMemory.class);
+        roundContextService = mock(RoundContextService.class);
         shortTermMemory = mock(ShortTermMemory.class);
         sessionRegistry = mock(AgentSessionRegistry.class);
 
         when(sessionRegistry.isCancelled(any())).thenReturn(false);
         when(roundMemory.getRounds(any(), any())).thenReturn(List.of());
+        when(roundContextService.loadPlannerMemory(any(), any()))
+                .thenReturn(new RoundContextService.PlannerMemory("", List.of(), List.of()));
         when(worker.doWorkWithRagParallel(any()))
                 .thenReturn(new WorkDetailVO(true, "找到 3 家可避开海鲜的餐厅"));
     }
@@ -222,6 +227,7 @@ class ConstraintGovernanceSmokeTest {
         ReflectionTestUtils.setField(orchNode, "subGraphAgentsMap", agents);
         ReflectionTestUtils.setField(orchNode, "shortTermMemory", shortTermMemory);
         ReflectionTestUtils.setField(orchNode, "roundMemory", roundMemory);
+        ReflectionTestUtils.setField(orchNode, "roundContextService", roundContextService);
         ReflectionTestUtils.setField(orchNode, "agentSessionRegistry", sessionRegistry);
         ReflectionTestUtils.setField(orchNode, "constraintStore", constraintStore);
         ReflectionTestUtils.setField(orchNode, "constraintAuditor", new ConstraintAuditor());

@@ -29,6 +29,8 @@ import java.util.UUID;
 public class AgentMDC {
 
     private static final String TRACE_ID = "traceId";
+    private static final String SESSION_ID = "sessionId";
+    private static final String CHAT_HISTORY_ID = "chatHistoryId";
     private static final String AGENT_NAME = "agentName";
     private static final String ROUND = "round";
     private static final String IS_RETRY = "isRetry";
@@ -61,6 +63,21 @@ public class AgentMDC {
 
     public static void setTraceId(String traceId) {
         MDC.put(TRACE_ID, traceId);
+    }
+
+    /** 会话ID（现阶段等同用户ID），贯穿整个请求 */
+    public static void setSessionId(String sessionId) {
+        MDC.put(SESSION_ID, sessionId);
+    }
+
+    /**
+     * 当前这一轮的聊天记录ID。
+     *
+     * <p>落在 MDC 里，{@code LlmCallLogService} 记录调用日志时自动带上，
+     * 从而把"每次 LLM 调用"挂到"某一轮聊天记录"上。
+     */
+    public static void setChatHistoryId(String chatHistoryId) {
+        MDC.put(CHAT_HISTORY_ID, chatHistoryId);
     }
 
     public static void setAgentName(String agentName) {
@@ -111,6 +128,14 @@ public class AgentMDC {
         return MDC.get(TRACE_ID);
     }
 
+    public static String getSessionId() {
+        return MDC.get(SESSION_ID);
+    }
+
+    public static String getChatHistoryId() {
+        return MDC.get(CHAT_HISTORY_ID);
+    }
+
     public static String getAgentName() {
         return MDC.get(AGENT_NAME);
     }
@@ -133,6 +158,8 @@ public class AgentMDC {
      */
     public static void clear() {
         MDC.remove(TRACE_ID);
+        MDC.remove(SESSION_ID);
+        MDC.remove(CHAT_HISTORY_ID);
         MDC.remove(AGENT_NAME);
         MDC.remove(ROUND);
         MDC.remove(IS_RETRY);

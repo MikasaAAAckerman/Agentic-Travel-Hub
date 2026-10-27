@@ -29,6 +29,16 @@ public class LlmCallLog {
     private String traceId;
 
     /**
+     * 会话ID（现阶段等同用户ID）
+     */
+    private String sessionId;
+
+    /**
+     * 所属聊天记录ID（user_chat_history.id），用于按轮重放执行明细
+     */
+    private Long chatHistoryId;
+
+    /**
      * 调用类型：PLANNER / WORKER / ROUTER / MEMORY / EVAL
      */
     private String callType;

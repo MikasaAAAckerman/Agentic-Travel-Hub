@@ -17,6 +17,7 @@ import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.ToolResponseMessage;
 import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.ai.chat.metadata.Usage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.document.Document;
@@ -147,7 +148,9 @@ public class WorkerService {
                     null,  // TODO: 记录工具执行结果
                     duration,
                     true,
-                    null
+                    null,
+                    promptTokensOf(chatResponse),
+                    completionTokensOf(chatResponse)
             );
 
             AgentMDC.clearContentContext();
@@ -169,7 +172,8 @@ public class WorkerService {
                     null,
                     duration,
                     false,
-                    errorMessage
+                    errorMessage,
+                    0, 0   // 失败路径拿不到 response，交给估算
             );
 
             throw e;
@@ -282,15 +286,34 @@ public class WorkerService {
                             .build()
             );
             log.info("[Worker] 开始进行finalResult总结 | message={}", JSON.toJSON(JSON.toJSONString(messages)));
+            long summaryStart = System.currentTimeMillis();
             ChatResponse finalResponse = workerClient.prompt()
                     .system(SystemPrompt.WORKER_SUMMARY_SYSTEM_PROMPT)
                     .messages(messages)
                     .options(summaryOptions)
                     .call()
                     .chatResponse();
+            long summaryDuration = System.currentTimeMillis() - summaryStart;
 
             String finalAnswer = finalResponse.getResult().getOutput().getText();
             WorkDetailVO workDetailVO = new WorkDetailVO(anyToolSucceeded, finalAnswer);
+
+            // 记一条 worker 调用日志：并发路径原先不落日志，导致 llm_call_log 缺 worker 行、
+            // 按 chat_history_id 重放时看不到工具细节，本轮 token 也会少算
+            llmCallLogService.recordWorkerCall(
+                    "Worker",
+                    "v3",
+                    SystemPrompt.WORKER_SUMMARY_SYSTEM_PROMPT,
+                    planDetailVO.getPlanDetail(),
+                    finalAnswer,
+                    JSON.toJSONString(assistantMessage.getToolCalls()),
+                    JSON.toJSONString(results),
+                    summaryDuration,
+                    true,
+                    null,
+                    promptTokensOf(finalResponse),
+                    completionTokensOf(finalResponse)
+            );
 
             AgentMDC.setEventType(AgentEventType.WORKER_OUTPUT.getType());
             AgentMDC.setWorkerConclusion(finalAnswer);
@@ -335,5 +358,24 @@ public class WorkerService {
         return false;
     }
 
+    // ═══════════════════════════════════════════════════════════
+    // Token usage 提取（拿不到就返回 0，由 LlmCallLogService 估算兜底）
+    // ═══════════════════════════════════════════════════════════
 
+    private static int promptTokensOf(ChatResponse response) {
+        Usage usage = usageOf(response);
+        return usage == null || usage.getPromptTokens() == null ? 0 : usage.getPromptTokens();
+    }
+
+    private static int completionTokensOf(ChatResponse response) {
+        Usage usage = usageOf(response);
+        return usage == null || usage.getCompletionTokens() == null ? 0 : usage.getCompletionTokens();
+    }
+
+    private static Usage usageOf(ChatResponse response) {
+        if (response == null || response.getMetadata() == null) {
+            return null;
+        }
+        return response.getMetadata().getUsage();
+    }
 }

@@ -14,6 +14,7 @@ import com.travel.aiagent.common.domain.SubAgentOutput;
 import com.travel.aiagent.common.domain.constraint.ConstraintSet;
 import com.travel.aiagent.common.domain.prompt.SystemPrompt;
 import com.travel.aiagent.common.memory.PlannerContextVO;
+import com.travel.aiagent.common.memory.RoundContextService;
 import com.travel.aiagent.common.memory.RoundMemory;
 import com.travel.aiagent.common.memory.RoundVO;
 import com.travel.aiagent.common.memory.ShortTermMemory;
@@ -47,6 +48,9 @@ public class OrchestratorGraphNode {
 
     @Resource
     private RoundMemory roundMemory;
+
+    @Resource
+    private RoundContextService roundContextService;
 
     @Resource
     private AgentSessionRegistry agentSessionRegistry;
@@ -96,13 +100,15 @@ public class OrchestratorGraphNode {
             }
             String systemPrompt = SystemPrompt.buildOrchestratorSystemPrompt(subAgentDescriptionBuilder.toString());
 
-            // 第一套对话级记忆：读取结构化轮次（跨请求多轮对话），序列化成 JSON 给 planner
-            List<RoundVO> rounds = roundMemory.getRounds(userId, chatId);
+            // 第一套对话级记忆：摘要（越早的历史）+ 历史原文 + 本轮执行结果，三者各归其位
+            RoundContextService.PlannerMemory memory = roundContextService.loadPlannerMemory(userId, chatId);
             PlannerContextVO plannerContext = PlannerContextVO.builder()
                     .userTag(List.of())
-                    .userInput(userInput)
                     .longTermHistory(List.of())
-                    .rounds(rounds)
+                    .historySummary(memory.historySummary())
+                    .rounds(memory.rounds())
+                    .userInput(userInput)
+                    .currentSubAgentResults(memory.currentSubAgentResults())
                     .build();
             PlanDetailVO planDetailVO = plannerService.doOrchestratorAgentPlan(plannerContext, systemPrompt);
 
