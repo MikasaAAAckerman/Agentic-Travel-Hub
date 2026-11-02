@@ -1,0 +1,20 @@
+# 应用容器 —— 与 docker-compose.yml 里的可观测性栈分开，互不干扰
+#
+# 启动：pwsh scripts/cd.ps1
+# 或手动：docker compose -f docker/app-compose.yml up -d
+
+services:
+  app:
+    image: ${APP_IMAGE:-agentic-travel-hub:latest}
+    container_name: travel-hub-app
+    environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
+      # 容器里的 localhost 指容器自己，宿主机上的服务必须走 host.docker.internal
+      SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL:-jdbc:postgresql://host.docker.internal:5432/travel_hub}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    volumes:
+      - ../logs:/app/logs
+    restart: unless-stopped
