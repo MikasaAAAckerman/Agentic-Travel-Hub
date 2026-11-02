@@ -76,4 +76,31 @@
             </plugin>
         </plugins>
     </build>
+
+    <profiles>
+        <!--
+            CI 环境没有 PostgreSQL / 向量库 / DashScope Key，
+            这里排除依赖真实基础设施的集成测试；本地手工执行或走独立的集成测试流水线。
+        -->
+        <profile>
+            <id>ci</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <configuration>
+                            <excludes>
+                                <exclude>**/LlmCallLogTest.java</exclude>
+                                <exclude>**/FeedbackServiceTest.java</exclude>
+                                <exclude>**/VectorStoreImportTest.java</exclude>
+                                <exclude>**/VersionedKnowledgeBaseTest.java</exclude>
+                                <exclude>**/RagEvaluationTest.java</exclude>
+                            </excludes>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

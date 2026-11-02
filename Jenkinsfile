@@ -35,7 +35,8 @@ pipeline {
 
         stage('测试') {
             steps {
-                bat 'mvn -B test'
+                // -Pci 排除依赖 PostgreSQL / 向量库 / API Key 的集成测试，见 hub-starter/pom.xml
+                bat 'mvn -B test -Pci'
             }
             post {
                 always {
