@@ -11,10 +11,13 @@ services:
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
       # 容器里的 localhost 指容器自己，宿主机上的服务必须走 host.docker.internal
       SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL:-jdbc:postgresql://host.docker.internal:5432/travel_hub}
+      # application-dev.yml 不进镜像（含密钥），由 cd.ps1 挂载到 /app/config 后从这里加载
+      SPRING_CONFIG_ADDITIONAL_LOCATION: file:/app/config/
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
       - "${APP_PORT:-8080}:8080"
     volumes:
       - ../logs:/app/logs
+      - ${APP_CONFIG_DIR:-../hub-starter/src/main/resources}:/app/config:ro
     restart: unless-stopped

@@ -131,6 +131,21 @@ Step '4/5 启动容器'
 $env:APP_IMAGE = $image
 $env:APP_PORT  = "$Port"
 
+# application-dev.yml 被 .gitignore 排除（里面有 API Key），不会进镜像；
+# 运行时以只读方式挂进容器的 /app/config，由 SPRING_CONFIG_ADDITIONAL_LOCATION 加载。
+$configCandidates = @(
+    (Join-Path $repoRoot 'hub-starter\src\main\resources\application-dev.yml'),
+    'D:\project\Agentic-Travel-Hub\hub-starter\src\main\resources\application-dev.yml'
+)
+$configFile = $configCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+if (-not $configFile) {
+    Write-Host '  找不到 application-dev.yml（数据库、模型、API Key 都在里面），应用起不来。' -ForegroundColor Red
+    Write-Host '  请先补上 hub-starter/src/main/resources/application-dev.yml。' -ForegroundColor Yellow
+    exit 1
+}
+$env:APP_CONFIG_DIR = Split-Path -Parent $configFile
+Write-Host "  挂载配置：$configFile" -ForegroundColor DarkGray
+
 & docker compose -f $composeFile up -d --force-recreate
 if ($LASTEXITCODE -ne 0) {
     Write-Host '  容器启动失败。' -ForegroundColor Red
