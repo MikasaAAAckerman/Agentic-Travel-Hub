@@ -4,6 +4,7 @@ import com.travel.aiagent.common.controller.LlmCallLogController;
 import com.travel.aiagent.common.service.LlmCallLogService;
 import com.travel.common.domain.LlmCallLog;
 import lombok.extern.slf4j.Slf4j;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -14,6 +15,7 @@ import java.util.Map;
 /**
  * LLM 调用日志测试
  */
+@Disabled("手工验证用：需要真实 PostgreSQL 与运行中的应用上下文，CI 环境跳过")
 @SpringBootTest
 @Slf4j
 public class LlmCallLogTest {
@@ -64,7 +66,8 @@ public class LlmCallLogTest {
                 "[{\"tool\":\"flightSearchTool\",\"result\":\"...\"}]",  // toolResults
                 3000L,                     // durationMs
                 true,                      // success
-                null                       // errorMessage
+                null,                      // errorMessage
+                0, 0                       // promptTokens, completionTokens
         );
 
         log.info("✅ 记录成功 | id={}", id);
