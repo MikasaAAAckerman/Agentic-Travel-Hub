@@ -13,6 +13,9 @@ services:
       SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL:-jdbc:postgresql://host.docker.internal:5432/travel_hub}
       # application-dev.yml 不进镜像（含密钥），由 cd.ps1 挂载到 /app/config 后从这里加载
       SPRING_CONFIG_ADDITIONAL_LOCATION: file:/app/config/
+      # 高德 MCP 工具用 npx 拉起子进程，运行镜像里没有 Node，启动会 20s 超时并让应用退出。
+      # 需要地图 MCP 工具时，把 Node 装进镜像后再设 MCP_ENABLED=true。
+      SPRING_AI_MCP_CLIENT_ENABLED: ${MCP_ENABLED:-false}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
