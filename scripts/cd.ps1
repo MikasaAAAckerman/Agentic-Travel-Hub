@@ -166,7 +166,14 @@ Write-Host "  探测 $healthUrl" -ForegroundColor DarkGray
 while ((Get-Date) -lt $deadline) {
     try {
         $resp = Invoke-WebRequest -Uri $healthUrl -UseBasicParsing -TimeoutSec 3
-        if ($resp.Content -match '"status"\s*:\s*"([A-Z]+)"') {
+        # PowerShell 5.1 有时把 Content 返回成 byte[]，直接 -match 永远匹配不到，
+        # 必须先显式解码，否则应用明明健康也会被判成 120s 超时。
+        $body = if ($resp.Content -is [byte[]]) {
+            [System.Text.Encoding]::UTF8.GetString($resp.Content)
+        } else {
+            [string]$resp.Content
+        }
+        if ($body -match '"status"\s*:\s*"([A-Z]+)"') {
             $status = $Matches[1]
             break
         }
