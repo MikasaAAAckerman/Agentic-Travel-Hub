@@ -27,6 +27,9 @@ $ErrorActionPreference = 'Stop'
 # 当成异常抛出，所以对 docker 调用前统一放宽
 $PSNativeEap = $ErrorActionPreference
 
+# Jenkins 的 bat 步骤按 UTF-8 解码子进程 stdout；显式统一编码，避免中文在控制台乱码
+try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }
+
 $repoRoot    = Split-Path -Parent $PSScriptRoot
 $deployDir   = Join-Path $repoRoot '.deploy'
 $composeFile = Join-Path $repoRoot 'docker\app-compose.yml'
@@ -46,7 +49,7 @@ function Step([string]$Text) {
 
 Step '1/5 前置检查'
 
-& docker info --format '{{.ServerVersion}}' *> $null
+& docker info --format '{{.ServerVersion}}' 2>$null | Out-Null
 if ($LASTEXITCODE -ne 0) {
     Write-Host '  Docker 守护进程没起来。' -ForegroundColor Red
     Write-Host '  请先启动 Docker Desktop，等托盘图标变绿后重跑。' -ForegroundColor Yellow
@@ -101,8 +104,10 @@ New-Item -ItemType Directory -Force -Path $deployDir | Out-Null
 Copy-Item $jar.FullName (Join-Path $deployDir 'app.jar') -Force
 
 # 上一次的 latest 存成 previous：回滚靠它，生产环境应该用不可变 tag + registry
-& docker image inspect "${imageRepo}:latest" *> $null
-$hasPrevious = ($LASTEXITCODE -eq 0)
+# 不要用 docker image inspect 判存在性：镜像不存在时它写 stderr，
+# 在 $ErrorActionPreference='Stop' 下会被 PowerShell 5.1 当成异常直接终止脚本。
+$prevId = (& docker images -q "${imageRepo}:latest" 2>$null)
+$hasPrevious = -not [string]::IsNullOrWhiteSpace(($prevId | Out-String).Trim())
 if ($hasPrevious) {
     & docker tag "${imageRepo}:latest" "${imageRepo}:previous" | Out-Null
     Write-Host '  已保留上一版为 previous（用于失败回滚）' -ForegroundColor DarkGray
