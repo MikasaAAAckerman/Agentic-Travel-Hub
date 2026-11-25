@@ -180,9 +180,14 @@ public class ChatHistoryRepository {
             throw new IllegalStateException("插入摘要失败，未返回 id");
         }
 
+        // 必须与 findVisibleOldest 的口径一致：只遮蔽"被总结过"的行。
+        // 少了 final_reply IS NOT NULL，区间内的失败轮/半截轮也会被标记，
+        // 导致 rows != covered.size() 永远抛异常、每次压缩都回滚。
         String markSql = """
                 UPDATE user_chat_history SET compacted_by = ?, compacted_at = now()
-                WHERE session_id = ? AND id >= ? AND id < ? AND compacted_by IS NULL
+                WHERE session_id = ? AND id >= ? AND id < ?
+                  AND compacted_by IS NULL
+                  AND final_reply IS NOT NULL
                 """;
         int rows = jdbcTemplate.update(markSql, compactId, sessionId, beginId, endId);
         if (rows != covered.size()) {

@@ -103,12 +103,11 @@ public class OrchestratorGraphNode {
             // 第一套对话级记忆：摘要（越早的历史）+ 历史原文 + 本轮执行结果，三者各归其位
             RoundContextService.PlannerMemory memory = roundContextService.loadPlannerMemory(userId, chatId);
             PlannerContextVO plannerContext = PlannerContextVO.builder()
-                    .userTag(List.of())
-                    .longTermHistory(List.of())
-                    .historySummary(memory.historySummary())
-                    .rounds(memory.rounds())
-                    .userInput(userInput)
-                    .currentSubAgentResults(memory.currentSubAgentResults())
+                    // ① 跨会话稳定偏好：暂无生产者，先留空（null 不序列化）
+                    .historySummary(memory.historySummary())          // ② 早期历史压缩摘要
+                    .recentRounds(memory.recentRounds())              // ③ 近期历史原文（未压缩，不含本轮）
+                    .userInput(userInput)                             // ④ 本轮输入
+                    .currentSubAgentResults(memory.currentSubAgentResults())  // ⑤ 本轮已派发结果
                     .build();
             PlanDetailVO planDetailVO = plannerService.doOrchestratorAgentPlan(plannerContext, systemPrompt);
 

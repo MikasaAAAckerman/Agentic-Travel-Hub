@@ -64,8 +64,13 @@ public class RoundContextService {
         return new PlannerMemory(summary, history, currentResults);
     }
 
+    
+
     /**
      * 多段摘要按时间顺序拼接 —— 因为只压最老的前缀，所以顺序天然正确。
+     *
+     * <p>当前不做上限，也不做二轮压缩：摘要的收敛交给后续设计
+     * （按摘要条数或 token 阈值触发二轮合并）。在那之前这里只负责"spliced"。
      */
     private String loadSummary(String userId) {
         List<ChatHistoryCompactDO> compacts;
@@ -73,11 +78,12 @@ public class RoundContextService {
             compacts = chatHistoryRepository.findCompacts(userId);
         } catch (Exception e) {
             log.error("[RoundContext] 读取摘要失败，按无摘要继续 | sessionId={}", userId, e);
-            return "";
+            return null;
         }
         if (compacts == null || compacts.isEmpty()) {
-            return "";
+            return null;
         }
+
         StringBuilder sb = new StringBuilder();
         for (ChatHistoryCompactDO c : compacts) {
             if (c.getContent() == null || c.getContent().isBlank()) {
@@ -88,7 +94,7 @@ public class RoundContextService {
             }
             sb.append(c.getContent().trim());
         }
-        return sb.toString();
+        return sb.length() == 0 ? null : sb.toString();
     }
 
     /**
@@ -109,7 +115,7 @@ public class RoundContextService {
     /** planner 可见的记忆快照 */
     public record PlannerMemory(
             String historySummary,
-            List<RoundVO> rounds,
+            List<RoundVO> recentRounds,
             List<SubAgentResultVO> currentSubAgentResults
     ) {
     }

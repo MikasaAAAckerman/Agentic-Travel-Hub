@@ -8,21 +8,25 @@ import lombok.NoArgsConstructor;
 import java.util.List;
 
 /**
- * 给 Orchestrator Planner 的结构化上下文。
+ * 给 Orchestrator Planner 的结构化上下文 —— 五层时间轴。
  *
- * <p>对应 Context Engineering 四层：
- * <ul>
- *   <li>userTag → Identity &amp; Role 层（本轮占位空数组）</li>
- *   <li>longTermHistory → Persistent Facts 层（本轮占位空数组，待 recallPreferences 接入）</li>
- *   <li>historySummary → 压缩摘要层（越早的历史压成一段话）</li>
- *   <li>rounds → 近期历史原文（Active Working Set 层，<b>不含本轮</b>）</li>
- *   <li>currentSubAgentResults → 本轮已派发 subAgent 的执行结果</li>
- * </ul>
+ * <p>从"最稳定"到"最新"依次排列，字段顺序即 prompt 顺序
+ * （fastjson 按声明序序列化，null 字段不输出）：
+ * <ol>
+ *   <li>{@code userProfile} —— 跨会话稳定偏好（人格层），每条一句，上限 10 条</li>
+ *   <li>{@code historySummary} —— 早期历史压缩摘要，上限 3 段 / 2000 字</li>
+ *   <li>{@code recentRounds} —— 近期历史原文（未压缩），上限 20 轮，<b>不含本轮</b></li>
+ *   <li>{@code userInput} —— 本轮用户输入</li>
+ *   <li>{@code currentSubAgentResults} —— 本轮已派发 subAgent 的结果（内存态）</li>
+ * </ol>
  *
- * <p><b>字段声明顺序就是 prompt 顺序</b>（fastjson 按声明序序列化）：
- * 越早的历史越靠前，本轮内容最后——这就是模型该看到的时间轴。
+ * <p>历史上曾用名：{@code userTag}（→ userProfile）、{@code rounds}（→ recentRounds）。
+ * 原 {@code longTermHistory} 已删除：它装的是本会话近期历史，与 {@code recentRounds} 重合，
+ * 名字又暗示跨会话，容易误导。
  *
- * <p>最终序列化成 JSON 传给 planner 的 userMessage，替代原来的平铺字符串。
+ * <p>无数据的字段（{@code userProfile}、{@code historySummary}）保持 null，
+ * 让该字段从 prompt 中消失 —— 模型看不到字段，就不会误以为"查过了但为空"。
+ * {@code recentRounds} 为空时保留空数组，因为它表达的是"确实没有历史"。
  */
 @Data
 @Builder
@@ -30,21 +34,18 @@ import java.util.List;
 @AllArgsConstructor
 public class PlannerContextVO {
 
-    /** 用户标签（Identity 层，本轮占位空数组） */
-    private List<String> userTag;
+    /** ① 跨会话稳定偏好，每条一句，上限 10 条；暂无数据时为 null */
+    private List<String> userProfile;
 
-    /** 长期记忆 chunk（Persistent Facts 层，本轮占位空数组） */
-    private List<String> longTermHistory;
-
-    /** 压缩摘要：最早的历史被压成的一段话，空串表示没有 */
+    /** ② 早期历史压缩摘要；无压缩时为 null */
     private String historySummary;
 
-    /** 近期历史原文（<b>不含本轮</b>），按时间正序 */
-    private List<RoundVO> rounds;
+    /** ③ 近期历史原文（未压缩，≤20 轮，不含本轮） */
+    private List<RoundVO> recentRounds;
 
-    /** 用户当前输入 */
+    /** ④ 本轮用户原始输入 */
     private String userInput;
 
-    /** 本轮已经派发过的 subAgent 执行结果（本轮内存态，未落库） */
+    /** ⑤ 本轮已派发 subAgent 的执行结果 */
     private List<SubAgentResultVO> currentSubAgentResults;
 }

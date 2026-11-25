@@ -57,11 +57,11 @@ class RoundContextServiceTest {
         RoundContextService.PlannerMemory memory = service.loadPlannerMemory("s1", "c1");
 
         assertThat(memory.historySummary()).isEqualTo("早期摘要");
-        assertThat(memory.rounds()).hasSize(2);
-        assertThat(memory.rounds()).extracting(RoundVO::getRound).containsExactly(1, 2);
-        assertThat(memory.rounds()).extracting(RoundVO::getUserInput).containsExactly("u1", "u2");
+        assertThat(memory.recentRounds()).hasSize(2);
+        assertThat(memory.recentRounds()).extracting(RoundVO::getRound).containsExactly(1, 2);
+        assertThat(memory.recentRounds()).extracting(RoundVO::getUserInput).containsExactly("u1", "u2");
         // 历史轮没有执行明细（明细在 llm_call_log）
-        assertThat(memory.rounds().get(0).getSubAgentResults()).isEmpty();
+        assertThat(memory.recentRounds().get(0).getSubAgentResults()).isEmpty();
         // 本轮结果单独承载
         assertThat(memory.currentSubAgentResults()).hasSize(1);
         assertThat(memory.currentSubAgentResults().get(0).getAgent()).isEqualTo("FoodAgent");
@@ -79,6 +79,18 @@ class RoundContextServiceTest {
     }
 
     @Test
+    @DisplayName("多段摘要全部拼接，不截断")
+    void allSummariesAreJoined() {
+        when(repository.findCompacts(anyString())).thenReturn(List.of(
+                compact("第一段"), compact("第二段"), compact("第三段"), compact("第四段")));
+        when(repository.findRecentVisible(anyString(), anyInt())).thenReturn(List.of());
+        when(roundMemory.getRounds(anyString(), anyString())).thenReturn(List.of());
+
+        assertThat(service.loadPlannerMemory("s1", "c1").historySummary())
+                .isEqualTo("第一段\n\n第二段\n\n第三段\n\n第四段");
+    }
+
+    @Test
     @DisplayName("当前轮已完成 -> 不重复带出执行结果")
     void finishedRoundHasNoCurrentResults() {
         when(repository.findCompacts(anyString())).thenReturn(List.of());
@@ -88,7 +100,7 @@ class RoundContextServiceTest {
 
         RoundContextService.PlannerMemory memory = service.loadPlannerMemory("s1", "c1");
 
-        assertThat(memory.rounds()).hasSize(1);
+        assertThat(memory.recentRounds()).hasSize(1);
         assertThat(memory.currentSubAgentResults()).isEmpty();
     }
 
@@ -101,8 +113,8 @@ class RoundContextServiceTest {
 
         RoundContextService.PlannerMemory memory = service.loadPlannerMemory("s1", "c1");
 
-        assertThat(memory.historySummary()).isEmpty();
-        assertThat(memory.rounds()).isEmpty();
+        assertThat(memory.historySummary()).isNull();
+        assertThat(memory.recentRounds()).isEmpty();
         assertThat(memory.currentSubAgentResults()).isEmpty();
     }
 
@@ -115,8 +127,8 @@ class RoundContextServiceTest {
 
         RoundContextService.PlannerMemory memory = service.loadPlannerMemory("s1", "c1");
 
-        assertThat(memory.historySummary()).isEmpty();
-        assertThat(memory.rounds()).isEmpty();
+        assertThat(memory.historySummary()).isNull();
+        assertThat(memory.recentRounds()).isEmpty();
         assertThat(memory.currentSubAgentResults()).isEmpty();
     }
 }

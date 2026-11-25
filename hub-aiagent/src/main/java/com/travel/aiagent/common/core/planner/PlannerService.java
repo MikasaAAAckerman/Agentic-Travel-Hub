@@ -220,7 +220,8 @@ public class PlannerService {
     }
 
     /**
-     * v3 Orchestrator 专用：传入结构化上下文（PlannerContextVO：userTag + userInput + longTermHistory + rounds）。
+     * v3 Orchestrator 专用：传入结构化上下文
+     * （PlannerContextVO：userProfile + historySummary + recentRounds + userInput + currentSubAgentResults）。
      * 与 String 版（v2 用）区分，避免破坏 v2 的调用。
      */
     public PlanDetailVO doOrchestratorAgentPlan(PlannerContextVO context, String systemPrompt) {

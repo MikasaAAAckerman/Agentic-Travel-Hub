@@ -42,6 +42,17 @@ public class ChatCompactionService {
     /** 一次至少压这么多轮，否则不划算 */
     static final int MIN_COMPACT_ROUNDS = 2;
 
+    /** 一次最多压这么多轮，避免摘要 prompt 过长 */
+    static final int MAX_COMPACT_ROUNDS = 12;
+
+    /**
+     * 可见轮数超过这个值也触发压缩。
+     *
+     * <p>token 阈值依赖 {@code llm_call_log} 的汇总；汇总失败会记 0，
+     * 长期低估时只看 token 就永远压不动。轮数是兜底信号。
+     */
+    static final int MAX_VISIBLE_ROUNDS = 30;
+
     private final ChatHistoryRepository chatHistoryRepository;
     private final ChatClient assistantClient;
 
@@ -65,12 +76,15 @@ public class ChatCompactionService {
     }
 
     private void doCompact(String sessionId) {
+        int visible = chatHistoryRepository.countVisible(sessionId);
         int tokens = chatHistoryRepository.sumVisibleTokens(sessionId);
-        if (tokens <= THRESHOLD_TOKENS) {
+
+        boolean overTokens = tokens > THRESHOLD_TOKENS;
+        boolean overRounds = visible > MAX_VISIBLE_ROUNDS;
+        if (!overTokens && !overRounds) {
             return;
         }
 
-        int visible = chatHistoryRepository.countVisible(sessionId);
         int compactable = visible - KEEP_RECENT_ROUNDS;
         if (compactable < MIN_COMPACT_ROUNDS) {
             log.info("[Compaction] 可压轮次不足，跳过 | sessionId={} | visible={} | keep={}",
@@ -78,7 +92,7 @@ public class ChatCompactionService {
             return;
         }
 
-        int batch = Math.max(MIN_COMPACT_ROUNDS, compactable / 2);
+        int batch = Math.min(MAX_COMPACT_ROUNDS, Math.max(MIN_COMPACT_ROUNDS, compactable / 2));
         List<ChatHistoryDO> covered = chatHistoryRepository.findVisibleOldest(sessionId, batch);
         if (covered.size() < MIN_COMPACT_ROUNDS) {
             return;
@@ -91,8 +105,8 @@ public class ChatCompactionService {
         }
 
         long compactId = chatHistoryRepository.saveCompaction(sessionId, covered, summary.trim());
-        log.info("[Compaction] 压缩完成 | sessionId={} | 覆盖轮数={} | 压缩前可见token={} | compactId={} | 摘要长度={}",
-                sessionId, covered.size(), tokens, compactId, summary.trim().length());
+        log.info("[Compaction] 压缩完成 | sessionId={} | 覆盖轮数={} | 压缩前可见token={} | 触发={} | compactId={} | 摘要长度={}",
+                sessionId, covered.size(), tokens, overTokens ? "token" : "轮数", compactId, summary.trim().length());
     }
 
     /** 单独抽出便于测试覆盖（不 mock ChatClient 的流式 API） */

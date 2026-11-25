@@ -59,14 +59,29 @@ class ChatCompactionServiceTest {
     }
 
     @Test
-    @DisplayName("低于阈值 -> 什么都不做")
-    void belowThresholdDoesNothing() {
+    @DisplayName("token 与轮数都没超 -> 什么都不做")
+    void belowBothThresholdsDoesNothing() {
         when(repository.sumVisibleTokens(anyString())).thenReturn(ChatCompactionService.THRESHOLD_TOKENS);
+        when(repository.countVisible(anyString())).thenReturn(ChatCompactionService.MAX_VISIBLE_ROUNDS);
 
         service.compactIfNeeded("s1");
 
         verify(repository, never()).saveCompaction(anyString(), anyList(), anyString());
-        verify(repository, never()).countVisible(anyString());
+    }
+
+    @Test
+    @DisplayName("token 很低但轮数超了 -> 照样压缩（token 汇总失败时的兜底）")
+    void overRoundsTriggersCompaction() {
+        when(repository.sumVisibleTokens(anyString())).thenReturn(100);
+        when(repository.countVisible(anyString())).thenReturn(40);
+        when(repository.findVisibleOldest(eq("s1"), eq(ChatCompactionService.MAX_COMPACT_ROUNDS)))
+                .thenReturn(rounds(ChatCompactionService.MAX_COMPACT_ROUNDS));
+        when(repository.saveCompaction(anyString(), anyList(), anyString())).thenReturn(7L);
+
+        service.compactIfNeeded("s1");
+
+        verify(repository).findVisibleOldest("s1", ChatCompactionService.MAX_COMPACT_ROUNDS);
+        verify(repository).saveCompaction(eq("s1"), anyList(), anyString());
     }
 
     @Test
